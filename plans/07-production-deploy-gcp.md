@@ -39,7 +39,12 @@ hosting at this volume incurs $0.
 
 Config: [`firebase.json`](../firebase.json) (public dir `site-dist`, long-cache
 immutable assets, no-cache `index.html`) and [`.firebaserc`](../.firebaserc)
-(default project `smalldat`, default Hosting site).
+(default project `smalldat`).
+
+**Dedicated Hosting site `sandycoast`** (`sandycoast.web.app`). The project's
+default site `smalldat.web.app` is reserved for other content and is **not**
+touched — `firebase.json` pins `"site": "sandycoast"` and the workflow deploys
+`--only hosting:sandycoast`. Multiple Hosting sites live in one project for free.
 
 ## 3. CI/CD — GitHub Actions
 
@@ -80,8 +85,10 @@ Requires `gcloud` + `firebase` CLIs, authenticated as a project owner.
 
 ```powershell
 firebase projects:addfirebase smalldat        # if not already a Firebase project
-firebase experiments:enable webframeworks     # not required; ignore
 gcloud services enable firebasehosting.googleapis.com --project smalldat
+
+# Dedicated Hosting site for this demo (default smalldat.web.app stays reserved):
+firebase hosting:sites:create sandycoast --project smalldat
 ```
 
 ### 5b. Deploy service account
@@ -143,8 +150,10 @@ Firebase auto-provisions a managed SSL cert once DNS resolves (minutes–hours).
 After §5, either push to `main` or run the workflow manually
 (Actions → Deploy → Run workflow). Verify:
 
-- `https://smalldat.web.app` (default Firebase URL) serves the demo
+- `https://sandycoast.web.app` (dedicated site's Firebase URL) serves the demo
 - `https://sandycoast.smalldat.com` serves it once DNS + cert are live
+
+Custom domain (§5d) attaches to the **`sandycoast`** site, not the default.
 
 ## 7. Rollback
 
