@@ -1,4 +1,7 @@
 node_modules
 dist
+site-dist
 *.tsbuildinfo
 .DS_Store
+.firebase
+firebase-debug.log

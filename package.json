@@ -17,6 +17,8 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsup",
+    "build:site": "vite build",
+    "preview:site": "vite preview",
     "dev": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
