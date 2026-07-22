@@ -1,0 +1,35 @@
+{
+  "name": "@smalldat/visual",
+  "version": "0.0.1",
+  "description": "High-performance point/sand-based visual components (not SVG).",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "vite",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@webgpu/types": "^0.1.51",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}

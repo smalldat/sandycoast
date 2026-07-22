@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>smalldat SandyCoast — demo</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; font-family: system-ui, sans-serif; background: #0d1017; color: #cdd3de;
+        display: grid; grid-template-columns: 180px 1fr; grid-template-rows: auto 1fr auto;
+        grid-template-areas: "head head" "nav main" "panel panel"; height: 100vh;
+      }
+      header { grid-area: head; padding: 12px 20px; border-bottom: 1px solid #1e2430; }
+      h1 { font-size: 15px; margin: 0; font-weight: 600; }
+
+      /* Left component nav */
+      #nav { grid-area: nav; border-right: 1px solid #1e2430; padding: 12px 8px; overflow-y: auto; }
+      .nav-item {
+        display: block; width: 100%; text-align: left; background: transparent; color: #cdd3de;
+        border: 1px solid transparent; border-radius: 6px; padding: 8px 10px; cursor: pointer;
+        font-size: 13px; margin-bottom: 4px;
+      }
+      .nav-item:hover:not(.disabled) { background: #1b2230; }
+      .nav-item.active { background: #232c3d; border-color: #2a3242; }
+      .nav-item.disabled { opacity: 0.35; cursor: default; }
+
+      /* Chart column */
+      #host { grid-area: main; padding: 16px 20px; overflow: auto; }
+      #chart {
+        width: 100%; height: 460px;
+        border: 1px solid #1e2430; border-radius: 10px; background: #10141c;
+      }
+      .toolbar { margin: 10px 0; }
+      .status { font-size: 12px; opacity: 0.6; }
+      .hover { font-size: 12px; opacity: 0.8; min-height: 16px; margin-top: 4px; }
+      button {
+        background: #1b2230; color: #cdd3de; border: 1px solid #2a3242;
+        border-radius: 6px; padding: 6px 12px; cursor: pointer; margin-right: 8px; font-size: 13px;
+      }
+      button:hover { background: #232c3d; }
+
+      /* Bottom controls panel: full-width. CSS grid with auto-fill tracks wraps
+         groups onto new rows instead of ever overflowing horizontally — every
+         group stays visible at any window size. Separators are per-column
+         `border-left`s, so they share the same x within a column (aligned) and
+         only relayout when the track count changes. */
+      #panel {
+        grid-area: panel; border-top: 1px solid #1e2430; padding: 16px 20px 0;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+        align-items: start; gap: 0;
+        max-height: 42vh; overflow-x: hidden; overflow-y: auto;
+      }
+      .ctl-group {
+        margin: 0; padding: 2px 22px 18px; border-left: 1px solid #1e2430;
+      }
+      .ctl-group h3 {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+        opacity: 0.5; margin: 0 0 8px; font-weight: 600;
+      }
+      .ctl {
+        display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px;
+        margin-bottom: 7px; font-size: 12px;
+      }
+      .ctl-label { opacity: 0.85; }
+      .ctl input[type="range"] { width: 130px; }
+      .ctl input[type="number"], .ctl input[type="text"], .ctl select {
+        background: #10141c; color: #cdd3de; border: 1px solid #2a3242;
+        border-radius: 5px; padding: 3px 6px; font-size: 12px; width: 130px;
+      }
+      .ctl input[type="color"] { width: 34px; height: 22px; padding: 0; border: 1px solid #2a3242; border-radius: 4px; background: none; }
+      .ctl-value { font-variant-numeric: tabular-nums; opacity: 0.6; min-width: 34px; text-align: right; }
+      .ctl-checkgroup, .ctl-colorlist { display: flex; gap: 8px; align-items: center; }
+      .ctl-check { display: inline-flex; gap: 4px; align-items: center; }
+    </style>
+  </head>
+  <body>
+    <header><h1>smalldat SandyCoast — demo</h1></header>
+    <nav id="nav"></nav>
+    <main id="host"></main>
+    <aside id="panel"></aside>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
