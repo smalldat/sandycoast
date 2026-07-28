@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bar chart — @smalldat/visual</title>
+  <meta name="description" content="BarChart API reference: every config property, defaults, methods, events and examples." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <span class="dot"></span>
+      <span>@smalldat/visual<small>sand-based charts</small></span>
+    </a>
+    <nav class="nav-group">
+      <h4>Start here</h4>
+      <a href="index.html">Overview</a>
+      <a href="index.html#install">Install &amp; publish</a>
+      <a href="data-model.html">Data model &amp; shared config</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Visuals</h4>
+      <a href="bar-chart.html" class="active">Bar chart</a>
+      <a href="line-chart.html">Line chart</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Project</h4>
+      <a href="license.html">License</a>
+      <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <span class="eyebrow">Visual</span>
+    <h1>Bar chart</h1>
+    <p class="lede">Sand grains pour in from above and settle into bars. Optionally a solid fill + border
+      resolves as the sand fades out. Supports live <code>update</code> / <code>add</code> /
+      <code>remove</code> with a smooth morph, plus hover interaction.</p>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <a href="#construct">Constructor</a>
+      <a href="#config">Config: top level</a>
+      <a href="#grain">grain</a>
+      <a href="#animation">animation</a>
+      <a href="#interaction">interaction</a>
+      <a href="#axes">axes</a>
+      <a href="#legend">legend</a>
+      <a href="#currentvalue">currentValue</a>
+      <a href="#bars">bars (fill + border)</a>
+      <a href="#fps">fps</a>
+      <a href="#methods">Methods</a>
+      <a href="#events">Events</a>
+      <a href="#examples">Examples</a>
+    </div>
+
+    <h2 id="construct">Constructor</h2>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">BarChart</span>(host: HTMLElement, config: BarChartConfig)</code></pre>
+    <p>Mounts a canvas into <code>host</code> and boots the best available backend (WebGPU → Canvas2D).
+      The only required field is <code>data</code>; everything else has a default. Await
+      <code>chart.whenReady()</code> if you need the backend initialized before your next step.</p>
+
+    <h2 id="config">Config — top level</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>data</code> <span class="pill">required</span></td><td class="type">DataSet</td><td class="def">—</td>
+          <td>Points to render. See <a href="data-model.html">Data model</a>.</td></tr>
+        <tr><td><code>grainDensity</code></td><td class="type">number</td><td class="def">0.6</td>
+          <td>Grains per unit area of layout space. Higher = denser sand (and more work).</td></tr>
+        <tr><td><code>maxGrains</code></td><td class="type">number</td><td class="def">100000</td>
+          <td>Hard grain ceiling; the total never exceeds this <em>regardless of bar count</em> (bars share the budget proportionally), so grain cost stays bounded as the data grows.</td></tr>
+        <tr><td><code>colors</code></td><td class="type">string[]</td><td class="def">DEFAULT_PALETTE</td>
+          <td>Series colors (CSS hex / <code>rgb()</code> / <code>rgba()</code>), cycled per series.</td></tr>
+        <tr><td><code>background</code></td><td class="type">string</td><td class="def">transparent</td>
+          <td>Canvas clear color (CSS).</td></tr>
+        <tr><td><code>grain</code></td><td class="type">object</td><td class="def">—</td>
+          <td>Per-grain appearance. <a href="#grain">See below</a>.</td></tr>
+        <tr><td><code>animation</code></td><td class="type">object</td><td class="def">—</td>
+          <td>Pour-in + morph timing. <a href="#animation">See below</a>.</td></tr>
+        <tr><td><code>interaction</code></td><td class="type">object</td><td class="def">—</td>
+          <td>Hover effects. <a href="#interaction">See below</a>.</td></tr>
+        <tr><td><code>axes</code></td><td class="type">{ x?, y? }</td><td class="def">off</td>
+          <td>X and Y axes, each off by default. <a href="#axes">See below</a>.</td></tr>
+        <tr><td><code>legend</code></td><td class="type">LegendConfig</td><td class="def">off</td>
+          <td>Positionable series legend. <a href="#legend">See below</a>.</td></tr>
+        <tr><td><code>currentValue</code></td><td class="type">object</td><td class="def">off</td>
+          <td>Hover-tied value readout. <a href="#currentvalue">See below</a>.</td></tr>
+        <tr><td><code>bars</code></td><td class="type">BarStyleConfig</td><td class="def">off</td>
+          <td>Solid fill + border that resolves as sand fades. <a href="#bars">See below</a>.</td></tr>
+        <tr><td><code>fps</code></td><td class="type">FpsConfig</td><td class="def">off</td>
+          <td>On-screen FPS meter. <a href="#fps">See below</a>.</td></tr>
+        <tr><td><code>backend</code></td><td class="type">'auto' | 'webgpu' | 'webgl2' | 'canvas2d'</td><td class="def">'auto'</td>
+          <td>Force a rendering backend. <code>'auto'</code> prefers WebGPU, falls back to Canvas2D.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="grain"><code>grain</code> — grain appearance</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>sizePx</code></td><td class="type">number</td><td class="def">3</td><td>Grain size in CSS px (scaled by device-pixel-ratio).</td></tr>
+        <tr><td><code>shape</code></td><td class="type">'disc' | 'quad'</td><td class="def">'disc'</td><td>Round grain or square grain.</td></tr>
+        <tr><td><code>jitter</code></td><td class="type">number (0..1)</td><td class="def">0.6</td><td>Grid jitter fraction — scatters grains off the packing grid so they look natural.</td></tr>
+        <tr><td><code>settleJitter</code></td><td class="type">number</td><td class="def">0.004</td><td>Baseline settle wobble amplitude in layout units — the faint shimmer of settled sand.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="animation"><code>animation</code> — timing</h2>
+    <div class="note warn"><strong>Units:</strong> <code>duration</code>, <code>stagger</code> and
+      <code>morphDuration</code> are given in <strong>milliseconds</strong>. (The source type comment
+      says "seconds"; the implementation divides by 1000, so pass ms as in the examples.)</div>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>duration</code></td><td class="type">number (ms)</td><td class="def">900</td><td>Per-grain travel time from start to settled.</td></tr>
+        <tr><td><code>stagger</code></td><td class="type">number (ms)</td><td class="def">500</td><td>Spread of pour start times across grains, so they don't all land at once.</td></tr>
+        <tr><td><code>ease</code></td><td class="type">'linear' | 'easeOutCubic' | 'easeOutQuint'</td><td class="def">'easeOutCubic'</td><td>Grain travel easing.</td></tr>
+        <tr><td><code>morphDuration</code></td><td class="type">number (ms)</td><td class="def">duration + stagger</td><td>Transition window (border tween + grain fade) for <code>update</code> / <code>add</code> / <code>remove</code>.</td></tr>
+        <tr><td><code>reflow</code></td><td class="type">'translate' | 'reshuffle' | 'withBar'</td><td class="def">'translate'</td>
+          <td>How grains of an <em>unchanged</em> bar move on a data change. <code>translate</code> slides each grain 1:1 (with a settle stagger); <code>reshuffle</code> flows them from random old grains; <code>withBar</code> locks them rigidly to the bar — no delay, no fade flash (quietest).</td></tr>
+        <tr><td><code>enter</code></td><td class="type">'pour' | 'rise'</td><td class="def">'pour'</td><td>How an <em>added</em> bar's grains appear. <code>pour</code> falls from above; <code>rise</code> grows up from the base.</td></tr>
+        <tr><td><code>exit</code></td><td class="type">'fall' | 'vanish'</td><td class="def">'fall'</td><td>How a <em>removed</em> bar's grains leave. <code>fall</code> drops them off the bottom and fades; <code>vanish</code> removes them instantly.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="interaction"><code>interaction.hover</code></h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>effects</code></td><td class="type">('highlight' | 'jitter' | 'opacity')[]</td><td class="def">['highlight','jitter']</td><td>Which effects apply to the hovered bar's grains.</td></tr>
+        <tr><td><code>highlightGain</code></td><td class="type">number</td><td class="def">1.6</td><td>Color multiplier for hovered grains (<code>highlight</code> effect).</td></tr>
+        <tr><td><code>jitterAmp</code></td><td class="type">number</td><td class="def">0.008</td><td>Extra motion amplitude for hovered grains (<code>jitter</code> effect), layout units.</td></tr>
+        <tr><td><code>opacity</code></td><td class="type">number (0..1)</td><td class="def">1</td><td>Target opacity for hovered grains (<code>opacity</code> effect) — lets them pop even after the reveal has faded the sand.</td></tr>
+        <tr><td><code>fadeMs</code></td><td class="type">number (ms)</td><td class="def">180</td><td>Enter/leave transition time; the effect eases in on enter and out on leave (or crossfades between bars).</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="axes"><code>axes.x</code> / <code>axes.y</code> — <span class="type" style="font-size:15px">AxisConfig</span></h2>
+    <p>Each axis is off until you set <code>show: true</code>. Both axes share the same shape.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>show</code></td><td class="type">boolean</td><td class="def">false</td><td>Draw this axis.</td></tr>
+        <tr><td><code>ticks</code></td><td class="type">number | false</td><td class="def">auto</td><td>Approx tick count, or <code>false</code> for an axis line with no ticks.</td></tr>
+        <tr><td><code>tickFormat</code></td><td class="type">(v: Scalar) =&gt; string</td><td class="def">compact # / locale date</td><td>Format a tick value into its label.</td></tr>
+        <tr><td><code>label</code></td><td class="type">string</td><td class="def">—</td><td>Axis title, drawn beside the ticks.</td></tr>
+        <tr><td><code>gridLines</code></td><td class="type">boolean</td><td class="def">false</td><td>Extend ticks across the plot as grid lines.</td></tr>
+        <tr><td><code>color</code></td><td class="type">string</td><td class="def">subdued gray</td><td>Line / label color (CSS).</td></tr>
+        <tr><td><code>fontPx</code></td><td class="type">number</td><td class="def">11</td><td>Tick label font size in px.</td></tr>
+        <tr><td><code>fontFamily</code></td><td class="type">string</td><td class="def">'system-ui, sans-serif'</td><td>Tick / title font-family stack (CSS).</td></tr>
+        <tr><td><code>fontWeight</code></td><td class="type">string | number</td><td class="def">'normal'</td><td>Tick / title font weight (CSS).</td></tr>
+        <tr><td><code>titleDirection</code></td><td class="type">'up' | 'down'</td><td class="def">'up'</td><td>Reading direction of the rotated Y-axis title (ignored on X).</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="legend"><code>legend</code> — <span class="type" style="font-size:15px">LegendConfig</span></h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>show</code></td><td class="type">boolean</td><td class="def">false</td><td>Show the legend.</td></tr>
+        <tr><td><code>position</code></td><td class="type">'left' | 'right' | 'top' | 'bottom'</td><td class="def">'bottom'</td><td>Which edge to place it on.</td></tr>
+        <tr><td><code>align</code></td><td class="type">'start' | 'center' | 'end'</td><td class="def">'center'</td><td>Cross-axis alignment.</td></tr>
+        <tr><td><code>swatch</code></td><td class="type">'disc' | 'square'</td><td class="def">follows grain shape</td><td>Swatch shape.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="currentvalue"><code>currentValue</code></h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>show</code></td><td class="type">boolean</td><td class="def">false</td><td>Show the readout.</td></tr>
+        <tr><td><code>mode</code></td><td class="type">'pointer' | 'axis' | Side</td><td class="def">'pointer'</td><td><code>pointer</code> follows the cursor; a <code>Side</code> pins it to that edge; <code>axis</code> (<strong>On axes</strong>) drops the floating box and shows the value(s) directly on the axes — a highlighted marker beside the Y axis and/or below the X axis.</td></tr>
+        <tr><td><code>format</code></td><td class="type">(bar: BarMeta) =&gt; string</td><td class="def">—</td><td>Format the hovered bar into a readout string.</td></tr>
+        <tr><td><code>guide</code></td><td class="type">'none' | 'x' | 'y' | 'both'</td><td class="def">'y'</td><td>Cursor guide line(s) to the hovered point. <code>y</code> = horizontal to the value axis, <code>x</code> = vertical to the category axis, <code>both</code> = crosshair. Supersedes <code>showGuide</code>.</td></tr>
+        <tr><td><code>markers</code></td><td class="type">boolean</td><td class="def">true</td><td>When a guide line is on, highlight the matching axis with a value marker (filled tick label at the cursor's row/column).</td></tr>
+        <tr><td><code>showGuide</code></td><td class="type">boolean</td><td class="def">true</td><td><span class="pill">legacy</span> Horizontal guide to the value axis. Fallback for <code>guide</code> when it is omitted (<code>true</code> → <code>'y'</code>, <code>false</code> → <code>'none'</code>).</td></tr>
+        <tr><td><code>color</code></td><td class="type">string</td><td class="def">—</td><td>Text / line / marker color (CSS).</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="bars"><code>bars</code> — solid fill + border <span class="type" style="font-size:15px">BarStyleConfig</span></h2>
+    <p>Off by default; a config without <code>bars</code> renders as pure sand. When present, a solid
+      shape crossfades in as the grains fade out. Fill and border <strong>always use the bar's series
+      color</strong> — only opacity, width and which sides are configurable.</p>
+    <h3><code>bars.fill</code></h3>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>opacity</code></td><td class="type">number (0..1)</td><td class="def">1</td><td>Fill opacity.</td></tr>
+      </tbody>
+    </table>
+    <h3><code>bars.border</code></h3>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>left</code> / <code>top</code> / <code>right</code> / <code>bottom</code></td><td class="type">boolean</td><td class="def">all four*</td><td>Which edges to stroke. *When a <code>border</code> block is present but no side flags are set, all four are drawn.</td></tr>
+        <tr><td><code>width</code></td><td class="type">number</td><td class="def">1</td><td>Stroke width in CSS px.</td></tr>
+        <tr><td><code>opacity</code></td><td class="type">number (0..1)</td><td class="def">1</td><td>Stroke opacity.</td></tr>
+      </tbody>
+    </table>
+    <h3><code>bars.reveal</code> — particle→solid crossfade</h3>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>start</code></td><td class="type">'afterPour' | number</td><td class="def">'afterPour'</td><td>When the fade begins. <code>afterPour</code> = once pour + settle finishes (duration + stagger). A number = absolute seconds from start.</td></tr>
+        <tr><td><code>duration</code></td><td class="type">number (ms)</td><td class="def">500</td><td>Fade window length.</td></tr>
+        <tr><td><code>ease</code></td><td class="type">Easing</td><td class="def">'easeOutCubic'</td><td>Fade easing.</td></tr>
+        <tr><td><code>grainsTo</code></td><td class="type">number (0..1)</td><td class="def">0</td><td>Grain end-opacity after the fade (<code>0</code> = grains disappear, leaving only the solid bar).</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="fps"><code>fps</code> — <span class="type" style="font-size:15px">FpsConfig</span></h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>position</code></td><td class="type">Side | 'off'</td><td class="def">'off'</td><td>Edge/corner to pin the meter to. <code>left</code>/<code>right</code> sit in the top corner; <code>top</code>/<code>bottom</code> are centered on that edge.</td></tr>
+        <tr><td><code>color</code></td><td class="type">string</td><td class="def">subdued light gray</td><td>Text color (CSS).</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="methods">Methods</h2>
+    <table class="prop-table">
+      <thead><tr><th>Method</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>whenReady(): Promise&lt;void&gt;</code></td><td>Resolves once the backend is initialized and the first frame is scheduled.</td></tr>
+        <tr><td><code>get backend</code></td><td><code>'webgpu' | 'webgl2' | 'canvas2d' | null</code> — the active backend, or <code>null</code> before ready.</td></tr>
+        <tr><td><code>on('hover', fn)</code></td><td>Subscribe to hover; returns an unsubscribe function.</td></tr>
+        <tr><td><code>update(data)</code> / <code>update(patches)</code></td><td>Replace the whole dataset, or — given <code>PointPatch[]</code> — set <code>y</code> on existing points in place. Grains morph; the solid layer tweens (no re-pour).</td></tr>
+        <tr><td><code>add(points)</code></td><td>Append one or more points; new bars grow in and their grains enter per <code>animation.enter</code>.</td></tr>
+        <tr><td><code>remove(refs)</code></td><td>Remove points by index (negative = from end) or <code>{ x, z? }</code> match; bars reflow.</td></tr>
+        <tr><td><code>repour()</code></td><td>Re-run the pour-in animation with the current data (no morph).</td></tr>
+        <tr><td><code>getData(): DataSet</code></td><td>Deep-cloned snapshot of the current dataset.</td></tr>
+        <tr><td><code>dispose()</code></td><td>Cancel the loop, remove listeners, free the backend and DOM. Call on teardown.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="events">Events</h2>
+    <p>The only event is <code>hover</code>, carrying <code>{ bar: BarMeta | null }</code>
+      (<code>null</code> on pointer-leave).</p>
+    <pre><code><span class="tok-com">// BarMeta — metadata for one drawn bar</span>
+{
+  barId: <span class="tok-typ">number</span>;
+  seriesIndex: <span class="tok-typ">number</span>;
+  seriesKey: <span class="tok-typ">Scalar | undefined</span>;
+  xValue: <span class="tok-typ">Scalar</span>;         <span class="tok-com">// number | Date | string</span>
+  yValue: <span class="tok-typ">number</span>;
+  x0: <span class="tok-typ">number</span>; x1: <span class="tok-typ">number</span>;  <span class="tok-com">// layout-space extents [0,1]</span>
+  height: <span class="tok-typ">number</span>;
+  color: <span class="tok-typ">RGBA</span>;            <span class="tok-com">// [r,g,b,a] in 0..1</span>
+}</code></pre>
+
+    <h2 id="examples">Examples</h2>
+
+    <h3>Solid bars that resolve from sand</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">BarChart</span>(el, {
+  data,
+  bars: {
+    fill: { opacity: <span class="tok-num">0.85</span> },
+    border: { top: <span class="tok-key">true</span>, width: <span class="tok-num">1.5</span> },   <span class="tok-com">// only the top edge</span>
+    reveal: { start: <span class="tok-str">'afterPour'</span>, duration: <span class="tok-num">600</span>, grainsTo: <span class="tok-num">0.12</span> },
+  },
+});</code></pre>
+
+    <h3>Axes, grid, legend and value readout</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">BarChart</span>(el, {
+  data,
+  axes: {
+    x: { show: <span class="tok-key">true</span>, label: <span class="tok-str">'Quarter'</span> },
+    y: { show: <span class="tok-key">true</span>, ticks: <span class="tok-num">5</span>, gridLines: <span class="tok-key">true</span>, label: <span class="tok-str">'Revenue'</span> },
+  },
+  legend: { show: <span class="tok-key">true</span>, position: <span class="tok-str">'top'</span>, align: <span class="tok-str">'end'</span> },
+  currentValue: {
+    show: <span class="tok-key">true</span>,
+    format: (bar) => <span class="tok-str">`</span>${bar.xValue}<span class="tok-str">: €</span>${bar.yValue}<span class="tok-str">k`</span>,
+  },
+});</code></pre>
+
+    <h3>Live data — update, add, remove</h3>
+    <pre><code><span class="tok-com">// Set y on existing points (matched by x, and z if given):</span>
+chart.<span class="tok-fn">update</span>([{ x: <span class="tok-str">'Q2'</span>, z: <span class="tok-str">'EU'</span>, y: <span class="tok-num">175</span> }]);
+
+<span class="tok-com">// Append points; new bars grow in:</span>
+chart.<span class="tok-fn">add</span>([{ x: <span class="tok-str">'Q3'</span>, y: <span class="tok-num">60</span>, z: <span class="tok-str">'EU'</span> }, { x: <span class="tok-str">'Q3'</span>, y: <span class="tok-num">45</span>, z: <span class="tok-str">'US'</span> }]);
+
+<span class="tok-com">// Remove by {x,z?} match or by index:</span>
+chart.<span class="tok-fn">remove</span>([{ x: <span class="tok-str">'Q1'</span> }]);   <span class="tok-com">// drop every series bar at Q1</span>
+chart.<span class="tok-fn">remove</span>([-<span class="tok-num">1</span>]);          <span class="tok-com">// drop the last point</span></code></pre>
+    <div class="note">Unchanged bars just <em>move</em> to their new position; only added and removed bars
+      get a distinct animation. Tune it with <code>animation.reflow</code> / <code>enter</code> /
+      <code>exit</code> / <code>morphDuration</code>.</div>
+
+    <h3>Reacting to hover</h3>
+    <pre><code><span class="tok-key">const</span> off = chart.<span class="tok-fn">on</span>(<span class="tok-str">'hover'</span>, ({ bar }) => {
+  <span class="tok-key">if</span> (!bar) <span class="tok-key">return</span>;                <span class="tok-com">// pointer left the plot</span>
+  tooltip.textContent = <span class="tok-str">`</span>${bar.seriesKey} · ${bar.yValue}<span class="tok-str">`</span>;
+});
+<span class="tok-com">// later: off();  // unsubscribe</span></code></pre>
+
+    <div class="foot">
+      <p>© <span id="yr">2026</span> · <a href="license.html">License</a> ·
+        <a href="line-chart.html">Line chart →</a></p>
+    </div>
+  </main>
+</div>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
+</body>
+</html>

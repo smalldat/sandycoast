@@ -1,9 +1,17 @@
+import type { Scalar } from '../../core/data/types.js';
 import type { RGBA } from '../../core/render/types.js';
 import { cssRGBA } from '../../core/util/color.js';
 import { type AxisModel, formatNumber } from './axis.js';
 import type { ResolvedBarStyle } from './barStyle.js';
 import type { ResolvedAxis, ResolvedChrome } from './chrome.js';
 import type { BarMeta } from './types.js';
+
+/** Compact label for any scalar (number / date / string) used on axis markers. */
+function scalarLabel(v: Scalar): string {
+  if (typeof v === 'number') return formatNumber(v);
+  if (v instanceof Date) return v.toLocaleDateString('en-US');
+  return String(v);
+}
 
 /** Canvas2D font string for an axis's ticks/title, scaled to device px. */
 function axisFont(cfg: ResolvedAxis, dpr: number): string {
@@ -286,6 +294,40 @@ export class Overlay {
     }
   }
 
+  /**
+   * A filled highlight label pinned to an axis: `'y'` sits just left of the value
+   * axis, vertically centered on `py`; `'x'` sits just below the category axis,
+   * horizontally centered on `px`. Dark text over the axis color reads as a lit
+   * tick at the cursor's row/column.
+   */
+  private drawAxisMarker(
+    px: number,
+    py: number,
+    text: string,
+    axis: 'x' | 'y',
+    color: string,
+    dpr: number,
+  ): void {
+    const ctx = this.ctx;
+    const fontPx = 11 * dpr;
+    ctx.save();
+    ctx.font = `${fontPx}px system-ui, sans-serif`;
+    const padX = 5 * dpr;
+    const padY = 3 * dpr;
+    const bw = ctx.measureText(text).width + padX * 2;
+    const bh = fontPx + padY * 2;
+    const bx = axis === 'y' ? px - bw - 6 * dpr : px - bw / 2;
+    const by = axis === 'y' ? py - bh / 2 : py + 6 * dpr;
+    ctx.fillStyle = color;
+    roundRect(ctx, bx, by, bw, bh, 3 * dpr);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(16,20,28,0.95)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, bx + bw / 2, by + bh / 2);
+    ctx.restore();
+  }
+
   private drawCurrentValue(
     s: OverlayState,
     leftPx: number,
@@ -301,19 +343,41 @@ export class Overlay {
     const ctx = this.ctx;
     const barCx = dx((bar.x0 + bar.x1) / 2);
     const barTopY = dy(bar.height);
+    const onAxis = cfg.mode === 'axis';
 
-    if (cfg.showGuide) {
+    // Guide line(s) to the hovered bar.
+    if (cfg.guideY || cfg.guideX) {
       ctx.save();
       ctx.strokeStyle = cfg.color;
       ctx.globalAlpha = 0.5;
       ctx.lineWidth = dpr;
       ctx.setLineDash([4 * dpr, 4 * dpr]);
-      ctx.beginPath();
-      ctx.moveTo(leftPx, barTopY);
-      ctx.lineTo(barCx, barTopY);
-      ctx.stroke();
+      if (cfg.guideY) {
+        ctx.beginPath();
+        ctx.moveTo(leftPx, barTopY);
+        ctx.lineTo(barCx, barTopY);
+        ctx.stroke();
+      }
+      if (cfg.guideX) {
+        ctx.beginPath();
+        ctx.moveTo(barCx, bottomPx);
+        ctx.lineTo(barCx, barTopY);
+        ctx.stroke();
+      }
       ctx.restore();
     }
+
+    // Highlighted value markers on the axes. Shown when a matching guide is on,
+    // or unconditionally in 'axis' mode (the markers are the readout there).
+    if (s.chrome.y.show && (onAxis || (cfg.markers && cfg.guideY))) {
+      this.drawAxisMarker(leftPx, barTopY, formatNumber(bar.yValue), 'y', cfg.color, dpr);
+    }
+    if (s.chrome.x.show && (onAxis || (cfg.markers && cfg.guideX))) {
+      this.drawAxisMarker(barCx, bottomPx, scalarLabel(bar.xValue), 'x', cfg.color, dpr);
+    }
+
+    // In 'axis' mode the readout lives on the axes; skip the floating box.
+    if (onAxis) return;
 
     const text = (cfg.format ?? defaultFormat)(bar);
     const fontPx = 12 * dpr;

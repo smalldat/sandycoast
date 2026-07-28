@@ -1,7 +1,7 @@
 import { BarChart, type DataSet, type Point, type Scalar } from '../src/index.js';
 import type { ControlGroup } from './controls.js';
 import { renderControls } from './controls.js';
-import { clearSettings, loadSettings, saveSettings } from './persist.js';
+import { clearSettings, deepMerge, loadSettings, saveSettings } from './persist.js';
 import type { DemoComponent } from './registry.js';
 
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
@@ -56,7 +56,7 @@ function defaultConfig(): Cfg {
       y: { show: true, ticks: 5, label: 'value', gridLines: true, color: '#8a93a6', fontPx: 11 },
     },
     legend: { show: true, position: 'bottom', align: 'center', swatch: 'disc' },
-    currentValue: { show: true, mode: 'pointer', showGuide: true, color: '#cdd3de' },
+    currentValue: { show: true, mode: 'pointer', guide: 'y', markers: true, color: '#cdd3de' },
     bars: {
       fill: { opacity: 0.85 },
       border: {
@@ -71,6 +71,44 @@ function defaultConfig(): Cfg {
     },
     // On-screen FPS meter; 'off' hides it. Position pins it to an edge/corner.
     fps: { position: 'off', color: '#cdd3de' },
+  };
+}
+
+// Named starting points. Each is a full config: `Default` is the untouched
+// baseline; the others overlay `defaultConfig()` with a distinct look.
+const PRESET_NAMES = ['Default', 'Visible particles + hover', 'Grainy low-fill'] as const;
+type PresetName = (typeof PRESET_NAMES)[number];
+
+// Strong hover shared by presets 2 & 3: dim the rest, gain + jitter the target.
+const LOUD_HOVER = {
+  effects: ['jitter', 'opacity'],
+  highlightGain: 2.4,
+  jitterAmp: 0.006,
+  opacity: 0.8,
+  fadeMs: 160,
+  bars: {
+    fill: {
+      opacity: 0.5,
+    },
+  },
+};
+
+function presets(): Record<PresetName, Cfg> {
+  return {
+    Default: defaultConfig(),
+    'Visible particles + hover': deepMerge(defaultConfig(), {
+      grainDensity: 1.8,
+      grain: { sizePx: 3.6, jitter: 0.6 },
+      interaction: { hover: LOUD_HOVER },
+      bars: { fill: { opacity: 0.7 }, reveal: { grainsTo: 0.5 } },
+    }),
+    'Grainy low-fill': deepMerge(defaultConfig(), {
+      grainDensity: 2,
+      grain: { sizePx: 3.6, jitter: 0.6 },
+      interaction: { hover: LOUD_HOVER },
+      // Bars barely filled; grains stay near-opaque so the texture dominates.
+      bars: { fill: { opacity: 0.12 }, reveal: { grainsTo: 1 } },
+    }),
   };
 }
 
@@ -361,12 +399,23 @@ const GROUPS: ControlGroup[] = [
         kind: 'select',
         label: 'Mode',
         path: 'currentValue.mode',
-        options: (['pointer', 'top', 'right', 'bottom', 'left'] as const).map((v) => ({
+        options: (['pointer', 'axis', 'top', 'right', 'bottom', 'left'] as const).map((v) => ({
           value: v,
-          label: v,
+          label: v === 'axis' ? 'On axes' : v,
         })),
       },
-      { kind: 'checkbox', label: 'Guide line', path: 'currentValue.showGuide' },
+      {
+        kind: 'select',
+        label: 'Cursor line',
+        path: 'currentValue.guide',
+        options: [
+          { value: 'none', label: 'none' },
+          { value: 'y', label: 'horizontal' },
+          { value: 'x', label: 'vertical' },
+          { value: 'both', label: 'crosshair' },
+        ],
+      },
+      { kind: 'checkbox', label: 'Axis markers', path: 'currentValue.markers' },
       { kind: 'color', label: 'Color', path: 'currentValue.color' },
     ],
   },
@@ -428,7 +477,8 @@ class BarChartDemo implements DemoComponent {
       this.renderPanel();
       this.rebuild();
     });
-    toolbar.append(rePour, rand, reset);
+    const preset = presetPicker(PRESET_NAMES, (name) => this.applyPreset(name as PresetName));
+    toolbar.append(preset, rePour, rand, reset);
 
     // Live-data controls: exercise update / add / remove without a full rebuild.
     const liveBar = document.createElement('div');
@@ -524,6 +574,15 @@ class BarChartDemo implements DemoComponent {
     }
   }
 
+  // Swap the whole config to a named preset, persist it, refresh the panel so
+  // every input reflects the new values, then rebuild.
+  private applyPreset(name: PresetName): void {
+    this.cfg = presets()[name];
+    saveSettings(this.id, this.cfg);
+    this.renderPanel();
+    this.rebuild();
+  }
+
   private build(): void {
     this.chart = new BarChart(this.chartEl, { ...(this.cfg as object), data: this.data } as never);
     this.chart.whenReady().then(() => {
@@ -562,6 +621,25 @@ function toggle(label: string, onChange: (on: boolean) => void): HTMLLabelElemen
   const span = document.createElement('span');
   span.textContent = label;
   wrap.append(cb, span);
+  return wrap;
+}
+
+/** Labeled <select> of preset names; fires `onPick` on choice. */
+function presetPicker(names: readonly string[], onPick: (name: string) => void): HTMLLabelElement {
+  const wrap = document.createElement('label');
+  wrap.style.cssText =
+    'display:inline-flex;gap:5px;align-items:center;margin-right:12px;font-size:13px;';
+  const span = document.createElement('span');
+  span.textContent = 'Preset';
+  const sel = document.createElement('select');
+  for (const n of names) {
+    const opt = document.createElement('option');
+    opt.value = n;
+    opt.textContent = n;
+    sel.append(opt);
+  }
+  sel.addEventListener('change', () => onPick(sel.value));
+  wrap.append(span, sel);
   return wrap;
 }
 

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Line chart — @smalldat/visual</title>
+  <meta name="description" content="LineChart API reference: every config property, defaults, methods, events and examples." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <span class="dot"></span>
+      <span>@smalldat/visual<small>sand-based charts</small></span>
+    </a>
+    <nav class="nav-group">
+      <h4>Start here</h4>
+      <a href="index.html">Overview</a>
+      <a href="index.html#install">Install &amp; publish</a>
+      <a href="data-model.html">Data model &amp; shared config</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Visuals</h4>
+      <a href="bar-chart.html">Bar chart</a>
+      <a href="line-chart.html" class="active">Line chart</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Project</h4>
+      <a href="license.html">License</a>
+      <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <span class="eyebrow">Visual</span>
+    <h1>Line chart</h1>
+    <p class="lede">Sand scatters within a ribbon along each series, then resolves into a solid line —
+      straight or a smooth Catmull-Rom spline — with an optional area fill. The config surface mirrors
+      the bar chart; a <code>line</code> block replaces the bar's <code>border</code>.</p>
+
+    <div class="note">The line chart <strong>reuses the exact same</strong> <code>axes</code>,
+      <code>legend</code>, <code>currentValue</code>, <code>fps</code> and <code>interaction.hover</code>
+      interfaces as the bar chart. This page documents only what differs; see the
+      <a href="bar-chart.html#axes">bar chart</a> for those shared blocks.</p>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <a href="#construct">Constructor</a>
+      <a href="#config">Config: top level</a>
+      <a href="#grain">grain</a>
+      <a href="#animation">animation</a>
+      <a href="#line">line (line + fill)</a>
+      <a href="#shared">Shared blocks</a>
+      <a href="#methods">Methods</a>
+      <a href="#events">Events</a>
+      <a href="#examples">Examples</a>
+    </div>
+
+    <h2 id="construct">Constructor</h2>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">LineChart</span>(host: HTMLElement, config: LineChartConfig)</code></pre>
+    <p>Mounts a canvas into <code>host</code> and boots the best backend (WebGPU → Canvas2D). Only
+      <code>data</code> is required.</p>
+
+    <h2 id="config">Config — top level</h2>
+    <p>Identical to the bar chart except for <code>lineThickness</code> (new) and <code>line</code>
+      (replaces <code>bars</code>).</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>data</code> <span class="pill">required</span></td><td class="type">DataSet</td><td class="def">—</td><td>Points to render. See <a href="data-model.html">Data model</a>.</td></tr>
+        <tr><td><code>lineThickness</code></td><td class="type">number</td><td class="def">0.03</td><td><strong>New for line charts.</strong> Ribbon thickness the sand scatters within, in layout units.</td></tr>
+        <tr><td><code>grainDensity</code></td><td class="type">number</td><td class="def">0.6</td><td>Grains per unit area of the line ribbon.</td></tr>
+        <tr><td><code>maxGrains</code></td><td class="type">number</td><td class="def">100000</td><td>Hard grain ceiling. Grains scale with the line's <em>ribbon area</em> (path length × thickness), not the point count, and never exceed this — so grain cost stays bounded even at thousands of points.</td></tr>
+        <tr><td><code>colors</code></td><td class="type">string[]</td><td class="def">DEFAULT_PALETTE</td><td>Series colors (CSS), cycled per series.</td></tr>
+        <tr><td><code>background</code></td><td class="type">string</td><td class="def">transparent</td><td>Canvas clear color.</td></tr>
+        <tr><td><code>grain</code></td><td class="type">object</td><td class="def">—</td><td>Grain appearance. <a href="#grain">See below</a>.</td></tr>
+        <tr><td><code>animation</code></td><td class="type">object</td><td class="def">—</td><td>Timing. <a href="#animation">See below</a>.</td></tr>
+        <tr><td><code>interaction</code></td><td class="type">object</td><td class="def">—</td><td>Hover. <a href="bar-chart.html#interaction">Same as bar chart</a>.</td></tr>
+        <tr><td><code>axes</code></td><td class="type">{ x?, y? }</td><td class="def">off</td><td><a href="bar-chart.html#axes">Same as bar chart</a>.</td></tr>
+        <tr><td><code>legend</code></td><td class="type">LegendConfig</td><td class="def">off</td><td><a href="bar-chart.html#legend">Same as bar chart</a>.</td></tr>
+        <tr><td><code>currentValue</code></td><td class="type">object</td><td class="def">off</td><td><a href="bar-chart.html#currentvalue">Same as bar chart</a>.</td></tr>
+        <tr><td><code>line</code></td><td class="type">LineStyleConfig</td><td class="def">off</td><td>Solid line + area fill. <a href="#line">See below</a>.</td></tr>
+        <tr><td><code>fps</code></td><td class="type">FpsConfig</td><td class="def">off</td><td><a href="bar-chart.html#fps">Same as bar chart</a>.</td></tr>
+        <tr><td><code>backend</code></td><td class="type">'auto' | 'webgpu' | 'webgl2' | 'canvas2d'</td><td class="def">'auto'</td><td>Force a rendering backend.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="grain"><code>grain</code></h2>
+    <p>Identical to the bar chart: <code>sizePx</code> (3), <code>shape</code> (<code>'disc'</code>),
+      <code>jitter</code> (0.6), <code>settleJitter</code> (0.004). See
+      <a href="bar-chart.html#grain">bar chart → grain</a>.</p>
+
+    <h2 id="animation"><code>animation</code></h2>
+    <div class="note warn"><strong>Units:</strong> <code>duration</code>, <code>stagger</code> and
+      <code>morphDuration</code> are in <strong>milliseconds</strong>.</div>
+    <p>Same as the bar chart, with two line-specific twists in the enum values:</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>duration</code></td><td class="type">number (ms)</td><td class="def">900</td><td>Per-grain travel time.</td></tr>
+        <tr><td><code>stagger</code></td><td class="type">number (ms)</td><td class="def">500</td><td>Spread of pour start times.</td></tr>
+        <tr><td><code>ease</code></td><td class="type">'linear' | 'easeOutCubic' | 'easeOutQuint'</td><td class="def">'easeOutCubic'</td><td>Grain travel easing.</td></tr>
+        <tr><td><code>morphDuration</code></td><td class="type">number (ms)</td><td class="def">duration + stagger</td><td>Transition window for live changes (line tween + grain fade).</td></tr>
+        <tr><td><code>reflow</code></td><td class="type">'translate' | 'reshuffle' | 'withLine'</td><td class="def">'translate'</td>
+          <td>How grains of an <em>unchanged</em> part of the line move. <code>withLine</code> (vs. the bar's <code>withBar</code>) locks them rigidly to the line — no delay, no fade flash.</td></tr>
+        <tr><td><code>morphGrains</code></td><td class="type">boolean</td><td class="def">true</td>
+          <td>Animate the sand during an <code>update</code>/<code>add</code>/<code>remove</code> morph. <code>false</code> snaps every grain straight to its new position (added grains just appear, removed just vanish) so <strong>only the solid line tweens</strong> on a data change. Ignored for the initial pour-in.</td></tr>
+        <tr><td><code>enter</code></td><td class="type">'pour' | 'rise' | 'continue'</td><td class="def">'pour'</td>
+          <td>How an <em>added</em> point's grains appear. <code>continue</code> (line-only) skips the emergence entirely — the vertex appears settled and the line just extends to it. Best for continuous streaming.</td></tr>
+        <tr><td><code>exit</code></td><td class="type">'fall' | 'vanish'</td><td class="def">'fall'</td><td>How a <em>removed</em> point's grains leave.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="line"><code>line</code> — solid line + area fill <span class="type" style="font-size:15px">LineStyleConfig</span></h2>
+    <p>The line-chart analogue of the bar chart's fill + border. Off by default; a config without
+      <code>line</code> renders as pure sand. Line and fill <strong>always use the series color</strong>.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>stack</code></td><td class="type">boolean</td><td class="def">false</td>
+          <td>Stack the series into a <strong>stacked area chart</strong>: each series sits on the cumulative total of the series below it (at every x), and the value axis spans the stack total. Best paired with a visible <code>fill</code>. Stacked bands use straight edges so they tile gap-free (spline is applied only to un-stacked areas).</td></tr>
+      </tbody>
+    </table>
+    <h3><code>line.line</code> — the connecting line</h3>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>style</code></td><td class="type">'none' | 'straight' | 'spline'</td><td class="def">'straight'*</td>
+          <td><code>none</code> = sand only, no line; <code>straight</code> = segments between points; <code>spline</code> = smooth Catmull-Rom curve. *Default when a <code>line</code> block is present.</td></tr>
+        <tr><td><code>width</code></td><td class="type">number</td><td class="def">1</td><td>Stroke width in CSS px.</td></tr>
+        <tr><td><code>opacity</code></td><td class="type">number (0..1)</td><td class="def">1</td><td>Stroke opacity.</td></tr>
+      </tbody>
+    </table>
+    <h3><code>line.fill</code> — area under the line</h3>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>opacity</code></td><td class="type">number (0..1)</td><td class="def">1</td><td>Area fill opacity. Omit the <code>fill</code> block for no area.</td></tr>
+      </tbody>
+    </table>
+    <h3><code>line.reveal</code> — particle→line crossfade</h3>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>start</code></td><td class="type">'afterPour' | number</td><td class="def">'afterPour'</td><td>When the fade begins. A number = absolute seconds from start.</td></tr>
+        <tr><td><code>duration</code></td><td class="type">number (ms)</td><td class="def">500</td><td>Fade window length.</td></tr>
+        <tr><td><code>ease</code></td><td class="type">Easing</td><td class="def">'easeOutCubic'</td><td>Fade easing.</td></tr>
+        <tr><td><code>grainsTo</code></td><td class="type">number (0..1)</td><td class="def">0</td><td>Grain end-opacity after the fade.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="shared">Shared blocks</h2>
+    <p><code>axes</code>, <code>legend</code>, <code>currentValue</code>, <code>fps</code> and
+      <code>interaction.hover</code> are the same interfaces the bar chart uses — including
+      <code>currentValue</code>'s cursor-line (<code>guide</code>: horizontal / vertical / crosshair),
+      axis value <code>markers</code>, and the <code>mode: 'axis'</code> (<strong>On axes</strong>) readout.
+      Full property tables:
+      <a href="bar-chart.html#axes">axes</a> ·
+      <a href="bar-chart.html#legend">legend</a> ·
+      <a href="bar-chart.html#currentvalue">currentValue</a> ·
+      <a href="bar-chart.html#fps">fps</a> ·
+      <a href="bar-chart.html#interaction">interaction.hover</a>.</p>
+
+    <h2 id="methods">Methods</h2>
+    <p>Same surface as the bar chart: <code>whenReady()</code>, <code>get backend</code>,
+      <code>on('hover', fn)</code>, <code>update(data | patches)</code>, <code>add(points)</code>,
+      <code>remove(refs)</code>, <code>repour()</code>, <code>getData()</code>, <code>dispose()</code>.
+      See <a href="bar-chart.html#methods">bar chart → Methods</a>.</p>
+
+    <h2 id="events">Events</h2>
+    <p>The <code>hover</code> event carries <code>{ point: LineMeta | null }</code> — note it's
+      <code>point</code> (a line vertex), where the bar chart uses <code>bar</code>.</p>
+    <pre><code><span class="tok-com">// LineMeta — metadata for one line vertex (data point)</span>
+{
+  pointId: <span class="tok-typ">number</span>;
+  seriesIndex: <span class="tok-typ">number</span>;
+  seriesKey: <span class="tok-typ">Scalar | undefined</span>;
+  xValue: <span class="tok-typ">Scalar</span>;
+  yValue: <span class="tok-typ">number</span>;
+  pos: <span class="tok-typ">number</span>;        <span class="tok-com">// layout-space x center [0,1]</span>
+  height: <span class="tok-typ">number</span>;     <span class="tok-com">// layout-space y (top of the band when stacked)</span>
+  baseHeight: <span class="tok-typ">number</span>; <span class="tok-com">// layout-space y of the stack floor (0 when un-stacked)</span>
+  color: <span class="tok-typ">RGBA</span>;
+}</code></pre>
+
+    <h2 id="examples">Examples</h2>
+
+    <h3>Spline line with area fill</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">LineChart</span>(el, {
+  data,
+  lineThickness: <span class="tok-num">0.04</span>,
+  line: {
+    line: { style: <span class="tok-str">'spline'</span>, width: <span class="tok-num">2</span> },
+    fill: { opacity: <span class="tok-num">0.18</span> },
+    reveal: { duration: <span class="tok-num">700</span>, grainsTo: <span class="tok-num">0.1</span> },
+  },
+  axes: { x: { show: <span class="tok-key">true</span> }, y: { show: <span class="tok-key">true</span>, gridLines: <span class="tok-key">true</span> } },
+});</code></pre>
+
+    <h3>Stacked area chart</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">LineChart</span>(el, {
+  data,
+  line: {
+    stack: <span class="tok-key">true</span>,                       <span class="tok-com">// each series stacks on the ones below</span>
+    fill: { opacity: <span class="tok-num">0.6</span> },
+    line: { style: <span class="tok-str">'straight'</span>, width: <span class="tok-num">1.5</span> },
+  },
+  axes: { x: { show: <span class="tok-key">true</span> }, y: { show: <span class="tok-key">true</span> } },
+});</code></pre>
+
+    <h3>Line-only transition (grains don't move on a data change)</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">LineChart</span>(el, {
+  data,
+  line: { line: { style: <span class="tok-str">'spline'</span> }, fill: { opacity: <span class="tok-num">0.15</span> } },
+  animation: { morphGrains: <span class="tok-key">false</span> },   <span class="tok-com">// update/add/remove: only the line tweens</span>
+});</code></pre>
+
+    <h3>Crosshair cursor with values on the axes</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">LineChart</span>(el, {
+  data,
+  axes: { x: { show: <span class="tok-key">true</span> }, y: { show: <span class="tok-key">true</span> } },
+  currentValue: { show: <span class="tok-key">true</span>, mode: <span class="tok-str">'axis'</span>, guide: <span class="tok-str">'both'</span> },
+});</code></pre>
+
+    <h3>Streaming: append points that just extend the line</h3>
+    <pre><code><span class="tok-key">const</span> chart = <span class="tok-key">new</span> <span class="tok-fn">LineChart</span>(el, {
+  data,
+  line: { line: { style: <span class="tok-str">'straight'</span> } },
+  animation: { enter: <span class="tok-str">'continue'</span> },   <span class="tok-com">// no pour — vertex appears settled</span>
+});
+
+<span class="tok-fn">setInterval</span>(() => {
+  chart.<span class="tok-fn">add</span>({ x: Date.<span class="tok-fn">now</span>(), y: <span class="tok-fn">nextSample</span>() });
+}, <span class="tok-num">1000</span>);</code></pre>
+
+    <h3>Sand only (no resolved line)</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">LineChart</span>(el, {
+  data,
+  line: { line: { style: <span class="tok-str">'none'</span> } },   <span class="tok-com">// grains never resolve into a stroke</span>
+});</code></pre>
+
+    <h3>Hover</h3>
+    <pre><code>chart.<span class="tok-fn">on</span>(<span class="tok-str">'hover'</span>, ({ point }) => {
+  <span class="tok-key">if</span> (point) label.textContent = <span class="tok-str">`</span>${point.xValue} → ${point.yValue}<span class="tok-str">`</span>;
+});</code></pre>
+
+    <div class="foot">
+      <p>© <span id="yr">2026</span> · <a href="license.html">License</a> ·
+        <a href="data-model.html">Data model →</a></p>
+    </div>
+  </main>
+</div>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
+</body>
+</html>

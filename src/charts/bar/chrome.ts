@@ -36,9 +36,14 @@ export interface ResolvedLegend {
 
 export interface ResolvedCurrentValue {
   show: boolean;
-  mode: 'pointer' | Side;
+  mode: 'pointer' | 'axis' | Side;
   format: ((bar: BarMeta) => string) | undefined;
-  showGuide: boolean;
+  /** Vertical guide line to the X axis. */
+  guideX: boolean;
+  /** Horizontal guide line to the Y axis. */
+  guideY: boolean;
+  /** Highlight the axis with a value marker at the cursor row/column. */
+  markers: boolean;
   color: string;
 }
 
@@ -80,11 +85,15 @@ export function resolveChrome(cfg: ChromeInput): ResolvedChrome {
     swatch: cfg.legend?.swatch ?? (cfg.grain?.shape === 'quad' ? 'square' : 'disc'),
   };
   const cv: CurrentValueConfig | undefined = cfg.currentValue;
+  // `guide` supersedes the legacy `showGuide` boolean (true → 'y', false → 'none').
+  const guide = cv?.guide ?? ((cv?.showGuide ?? true) ? 'y' : 'none');
   const currentValue: ResolvedCurrentValue = {
     show: cv?.show ?? false,
     mode: cv?.mode ?? 'pointer',
     format: cv?.format,
-    showGuide: cv?.showGuide ?? true,
+    guideX: guide === 'x' || guide === 'both',
+    guideY: guide === 'y' || guide === 'both',
+    markers: cv?.markers ?? true,
     color: cv?.color ?? VALUE_COLOR,
   };
   const any = x.show || y.show || legend.show || currentValue.show;

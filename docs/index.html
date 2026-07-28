@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>@smalldat/visual — Documentation</title>
+  <meta name="description" content="High-performance point/sand-based chart components. WebGPU-first, Canvas2D fallback. Not SVG." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <span class="dot"></span>
+      <span>@smalldat/visual<small>sand-based charts</small></span>
+    </a>
+    <nav class="nav-group">
+      <h4>Start here</h4>
+      <a href="index.html" class="active">Overview</a>
+      <a href="index.html#install">Install &amp; publish</a>
+      <a href="data-model.html">Data model &amp; shared config</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Visuals</h4>
+      <a href="bar-chart.html">Bar chart</a>
+      <a href="line-chart.html">Line chart</a>
+      <a href="index.html#roadmap" style="opacity:.55">Area chart <span class="pill">soon</span></a>
+      <a href="index.html#roadmap" style="opacity:.55">Scatter <span class="pill">soon</span></a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Project</h4>
+      <a href="license.html">License</a>
+      <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <span class="eyebrow">Documentation</span>
+    <h1>@smalldat/visual</h1>
+    <p class="lede">High-performance chart components rendered as <strong>points / sand</strong> — thousands
+      of grains pour in and settle into shapes. WebGPU-first, Canvas2D fallback. Not SVG.</p>
+
+    <p>Each visual takes a single config object and mounts into a DOM element. Grains live in a
+      Structure-of-Arrays buffer uploaded to the GPU once; each frame the CPU only bumps a
+      <code>now</code> uniform and the shader interpolates every grain's position. That's how a
+      chart animates 100k particles without touching the DOM.</p>
+
+    <div class="cards">
+      <a class="card" href="bar-chart.html">
+        <h3>Bar chart →</h3>
+        <p>Sand pours in and settles into bars. Solid fill + border reveal, live update/add/remove, hover.</p>
+      </a>
+      <a class="card" href="line-chart.html">
+        <h3>Line chart →</h3>
+        <p>Grains scatter along a ribbon, then resolve into a straight or spline line with optional area fill.</p>
+      </a>
+      <a class="card" href="data-model.html">
+        <h3>Data model →</h3>
+        <p>The generic <code>Point&lt;x,y,z&gt;</code> model, scales, colors, easing and backends — shared by every visual.</p>
+      </a>
+      <a class="card disabled" href="#roadmap">
+        <h3>Area &amp; Scatter</h3>
+        <p>Registered in the playground, not yet implemented.</p>
+        <span class="chip">Planned</span>
+      </a>
+    </div>
+
+    <h2 id="install">Install</h2>
+    <pre><code><span class="tok-com"># from the package registry</span>
+npm install @smalldat/visual</code></pre>
+
+    <h3>Quick start</h3>
+    <pre><code><span class="tok-key">import</span> { BarChart } <span class="tok-key">from</span> <span class="tok-str">'@smalldat/visual'</span>;
+
+<span class="tok-key">const</span> chart = <span class="tok-key">new</span> <span class="tok-fn">BarChart</span>(document.<span class="tok-fn">querySelector</span>(<span class="tok-str">'#el'</span>)!, {
+  data: {
+    points: [
+      { x: <span class="tok-str">'Q1'</span>, y: <span class="tok-num">120</span>, z: <span class="tok-str">'EU'</span> },
+      { x: <span class="tok-str">'Q1'</span>, y: <span class="tok-num">90</span>,  z: <span class="tok-str">'US'</span> },
+      { x: <span class="tok-str">'Q2'</span>, y: <span class="tok-num">140</span>, z: <span class="tok-str">'EU'</span> },
+    ],
+  },
+  grainDensity: <span class="tok-num">0.9</span>,
+  grain: { sizePx: <span class="tok-num">2.4</span>, shape: <span class="tok-str">'disc'</span> },
+  animation: { duration: <span class="tok-num">1100</span>, stagger: <span class="tok-num">700</span>, ease: <span class="tok-str">'easeOutCubic'</span> },
+  interaction: { hover: { effects: [<span class="tok-str">'highlight'</span>, <span class="tok-str">'jitter'</span>] } },
+});
+
+chart.<span class="tok-fn">on</span>(<span class="tok-str">'hover'</span>, ({ bar }) => console.<span class="tok-fn">log</span>(bar?.xValue, bar?.yValue));
+<span class="tok-key">await</span> chart.<span class="tok-fn">whenReady</span>();   <span class="tok-com">// backend picked, first frame scheduled</span>
+chart.<span class="tok-fn">update</span>(newData);      <span class="tok-com">// grains morph to new targets</span>
+chart.<span class="tok-fn">dispose</span>();</code></pre>
+
+    <div class="note">
+      <strong>Container sizing.</strong> The chart fills its host element via a <code>100%</code>-sized
+      canvas and watches it with a <code>ResizeObserver</code>. Give the host an explicit height.
+    </div>
+
+    <h2 id="publish">Publishing these docs to GitHub Pages</h2>
+    <p>These pages are plain static HTML/CSS with <strong>no build step</strong> — GitHub Pages can serve
+      the <code>docs/</code> folder directly. A <code>.nojekyll</code> file is included so Pages serves the
+      files as-is (no Jekyll processing).</p>
+
+    <h3>One-time setup</h3>
+    <pre><code><span class="tok-com"># 1. Commit the docs folder</span>
+git add docs
+git commit -m <span class="tok-str">"docs: static documentation site"</span>
+git push
+
+<span class="tok-com"># 2. In the GitHub repo:</span>
+<span class="tok-com">#    Settings → Pages → Build and deployment</span>
+<span class="tok-com">#      Source: "Deploy from a branch"</span>
+<span class="tok-com">#      Branch: main   /   Folder: /docs   →   Save</span></code></pre>
+    <p>Within a minute the site is live at
+      <code>https://&lt;user&gt;.github.io/&lt;repo&gt;/</code>. Every push to <code>main</code>
+      that touches <code>docs/</code> republishes automatically.</p>
+
+    <div class="note">
+      <strong>Custom domain (optional).</strong> Add a file <code>docs/CNAME</code> containing your
+      domain (e.g. <code>docs.smalldat.com</code>) and point a DNS <code>CNAME</code> record at
+      <code>&lt;user&gt;.github.io</code>.
+    </div>
+
+    <div class="note warn">
+      <strong>Note.</strong> These docs are separate from the live <em>playground demo</em> at
+      <code>sandycoast.smalldat.com</code>, which is built with Vite and deployed to Firebase Hosting by
+      the <code>.github/workflows/deploy.yml</code> action. The Pages docs and the Firebase playground
+      are independent — publishing one does not touch the other.
+    </div>
+
+    <h2 id="roadmap">Status &amp; roadmap</h2>
+    <p>Shipped: data model, scales (linear / time / band), grain packing, WebGPU + Canvas2D backends,
+      <strong>BarChart</strong> and <strong>LineChart</strong> with pour-in, morph
+      <code>update()</code>, and hover. Axes, positionable legend, current-value readout, per-mark
+      solid fill/border reveal, and live <code>update</code> / <code>add</code> / <code>remove</code>
+      with smooth tween.</p>
+    <p><strong>Planned next:</strong> WebGL2 fallback, area &amp; scatter visuals, framework wrappers.</p>
+
+    <div class="foot">
+      <p>© <span id="yr">2026</span> · Dual-licensed — see <a href="license.html">License</a>.
+        MIT for non-commercial use; a paid commercial license is required for revenue-generating organizations.</p>
+    </div>
+  </main>
+</div>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
+</body>
+</html>

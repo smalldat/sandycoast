@@ -1,0 +1,70 @@
+Sandycoast Visual — Dual License
+=================================
+
+Copyright (c) 2026 the @smalldat/visual authors
+
+This software is offered under a DUAL LICENSE. Choose the track that fits how
+you use it:
+
+  • NON-COMMERCIAL track  — free of charge, under the terms in Section A below.
+  • COMMERCIAL track      — for revenue-generating organizations; requires a
+                            paid commercial license, see Section B below.
+
+If you are not sure which track applies to you, contact
+<office-dat@smalldat.com> before using the software.
+
+-------------------------------------------------------------------------------
+Section A — Non-Commercial License (free)
+-------------------------------------------------------------------------------
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software WITHOUT RESTRICTION for NON-COMMERCIAL USE, including without
+limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software for Non-Commercial Use, and to
+permit persons to whom the Software is furnished to do so for Non-Commercial
+Use, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+"Non-Commercial Use" means use by an individual for personal projects, or use
+for research, teaching, evaluation, or by a non-profit organization, in each
+case where the use is NOT primarily intended for or directed toward commercial
+advantage or monetary compensation, and is not carried out by or on behalf of a
+Commercial Organization in the course of its revenue-generating activity.
+
+Except for the permission notice above, this non-commercial grant follows the
+terms of the MIT License. Its permissions apply only to Non-Commercial Use;
+Commercial Use requires a license under Section B.
+
+-------------------------------------------------------------------------------
+Section B — Commercial License (paid)
+-------------------------------------------------------------------------------
+
+If you are a "Commercial Organization" — any company, sole trader, or other
+entity that uses the Software in connection with a product, service, or internal
+tool that generates revenue or is otherwise directed toward commercial advantage
+or monetary compensation — you must obtain a paid commercial license before
+using the Software in that context.
+
+"Commercial Use" means any use that is not Non-Commercial Use as defined in
+Section A. This includes, without limitation: shipping the Software (or a
+derivative) inside a paid or ad-supported product; using it to build or operate
+a service offered to customers; or using it internally at a for-profit
+organization to support its revenue-generating operations.
+
+To obtain a commercial license, contact <office-dat@smalldat.com>. Fees and
+terms are agreed in a separate written commercial agreement. Until such an
+agreement is in effect, no rights are granted for Commercial Use.
+
+-------------------------------------------------------------------------------
+Warranty Disclaimer (applies to both tracks)
+-------------------------------------------------------------------------------
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

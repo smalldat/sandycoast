@@ -48,12 +48,29 @@ export interface LegendConfig {
 export interface CurrentValueConfig {
   /** Show the readout. Default false. */
   show?: boolean;
-  /** 'pointer' follows the cursor; a Side pins it to that edge. Default 'pointer'. */
-  mode?: 'pointer' | Side;
+  /**
+   * Where the readout box sits. `'pointer'` follows the cursor; a Side pins it to
+   * that edge; `'axis'` (**On axes**) drops the floating box and instead shows the
+   * value(s) directly on the axes — a highlighted marker beside the Y axis and/or
+   * below the X axis. Default `'pointer'`.
+   */
+  mode?: 'pointer' | 'axis' | Side;
   /** Format the hovered bar into a readout string. */
   format?: (bar: BarMeta) => string;
-  /** Draw a guide line from the bar to the value axis. Default true. */
+  /**
+   * Cursor guide line(s) drawn to the hovered point. `'y'` = horizontal line to
+   * the value (Y) axis, `'x'` = vertical line to the category (X) axis, `'both'`
+   * = crosshair, `'none'` = no line. When omitted, falls back to
+   * {@link showGuide} (`true` → `'y'`, `false` → `'none'`). Default `'y'`.
+   */
+  guide?: 'none' | 'x' | 'y' | 'both';
+  /** Legacy: draw a horizontal guide line to the value axis. Superseded by {@link guide}. Default true. */
   showGuide?: boolean;
+  /**
+   * When a guide line is on, highlight the corresponding axis with a value
+   * marker (a filled tick label at the cursor's row/column). Default true.
+   */
+  markers?: boolean;
   /** Text/line color (CSS). */
   color?: string;
 }
@@ -128,10 +145,10 @@ export interface BarChartConfig {
     settleJitter?: number;
   };
   animation?: {
-    /** Per-grain duration, seconds. */
+    /** Per-grain duration, milliseconds. */
     duration?: number;
     ease?: Easing;
-    /** Pour stagger spread, seconds. */
+    /** Pour stagger spread, milliseconds. */
     stagger?: number;
     /**
      * Transition length in **ms** for `update`/`add`/`remove` (border tween +

@@ -25,6 +25,21 @@ function distinctX(ds: DataSet, xType: string): Scalar[] {
   return vals;
 }
 
+/** Largest sum-of-series total over all x-slots (the stacked value-axis top). */
+function maxStackTotal(
+  xs: Scalar[],
+  series: (Scalar | undefined)[],
+  lookup: Map<string, number>,
+): number {
+  let max = 0;
+  for (const x of xs) {
+    let sum = 0;
+    for (const s of series) sum += lookup.get(`${String(x)} ${String(s)}`) ?? 0;
+    if (sum > max) max = sum;
+  }
+  return max;
+}
+
 /** One x-slot's value and its center in layout space [0,1] (for x-axis ticks). */
 export interface XSlot {
   value: Scalar;
@@ -60,23 +75,27 @@ export interface LineLayout {
  * per-point metadata for hover and ribbon segments for grain packing. All
  * series share the same evenly-spaced x-slots (one per distinct x value).
  */
-export function layoutLine(ds: DataSet, palette: RGBA[]): LineLayout {
+export function layoutLine(ds: DataSet, palette: RGBA[], stack = false): LineLayout {
   validate(ds);
   const { xType, yType } = resolveTypes(ds);
   const xs = distinctX(ds, xType);
   const series = seriesKeys(ds.points);
   const numericY = yType === 'category' ? 'number' : yType;
 
-  const yScale = LinearScale.fromValues(
-    ds.points.map((p) => toNumeric(p.y, numericY)),
-    true,
-  );
-
   // (xKey, seriesKey) -> y value.
   const lookup = new Map<string, number>();
   for (const p of ds.points) {
     lookup.set(`${String(p.x)} ${String(p.z)}`, toNumeric(p.y, numericY));
   }
+
+  // Stacked: the value axis must span the largest per-x stack total, not the
+  // largest single value. Unstacked: the raw value range (through zero).
+  const yScale = stack
+    ? new LinearScale([0, maxStackTotal(xs, series, lookup)])
+    : LinearScale.fromValues(
+        ds.points.map((p) => toNumeric(p.y, numericY)),
+        true,
+      );
 
   const n = Math.max(1, xs.length);
   const step = 1 / n;
@@ -89,10 +108,17 @@ export function layoutLine(ds: DataSet, palette: RGBA[]): LineLayout {
   for (let xi = 0; xi < xs.length; xi++) {
     const center = xi * step + step / 2;
     xSlots.push({ value: xs[xi]!, center });
+    // Running stack floor (data units) for this x-slot; unused when unstacked.
+    let acc = 0;
     for (let si = 0; si < series.length; si++) {
       const value = lookup.get(`${String(xs[xi])} ${String(series[si])}`);
       if (value === undefined) continue;
-      const height = Math.max(0, yScale.scale(value)) * PLOT_HEIGHT;
+      // Stacked bands rest on the cumulative total below; plain lines on zero.
+      const base = stack ? acc : 0;
+      const top = stack ? acc + value : value;
+      if (stack) acc = top;
+      const height = Math.max(0, yScale.scale(top)) * PLOT_HEIGHT;
+      const baseHeight = Math.max(0, yScale.scale(base)) * PLOT_HEIGHT;
       const color = palette[si % palette.length]!;
       const pointId = metas.length;
       metaAt.set(`${xi} ${si}`, pointId);
@@ -104,6 +130,7 @@ export function layoutLine(ds: DataSet, palette: RGBA[]): LineLayout {
         yValue: value,
         pos: center,
         height,
+        baseHeight,
         color,
       });
     }

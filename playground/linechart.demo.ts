@@ -1,7 +1,7 @@
-import { LineChart, type DataSet, type Point } from '../src/index.js';
+import { type DataSet, LineChart, type Point } from '../src/index.js';
 import type { ControlGroup } from './controls.js';
 import { renderControls } from './controls.js';
-import { clearSettings, loadSettings, saveSettings } from './persist.js';
+import { clearSettings, deepMerge, loadSettings, saveSettings } from './persist.js';
 import type { DemoComponent } from './registry.js';
 
 const SERIES = ['A', 'B', 'C'];
@@ -99,7 +99,8 @@ class LineChartDemo implements DemoComponent {
       this.renderPanel();
       this.rebuild(true);
     });
-    toolbar.append(rePour, regen, reset);
+    const preset = presetPicker(PRESET_NAMES, (name) => this.applyPreset(name as PresetName));
+    toolbar.append(preset, rePour, regen, reset);
 
     const liveBar = document.createElement('div');
     liveBar.className = 'toolbar';
@@ -192,6 +193,19 @@ class LineChartDemo implements DemoComponent {
     }
   }
 
+  // Swap the whole config to a named preset (data mode / point count are kept
+  // from the current cfg so the wave shape is unchanged), persist, refresh the
+  // panel, then rebuild keeping live data.
+  private applyPreset(name: PresetName): void {
+    this.cfg = deepMerge(presets()[name], {
+      dataMode: this.cfg.dataMode,
+      pointCount: this.cfg.pointCount,
+    });
+    saveSettings(this.id, this.cfg);
+    this.renderPanel();
+    this.rebuild(true);
+  }
+
   private build(): void {
     this.chart = new LineChart(this.chartEl, { ...(this.cfg as object), data: this.data } as never);
     this.chart.whenReady().then(() => {
@@ -234,6 +248,7 @@ function defaultConfig(): Cfg {
       ease: 'easeOutCubic',
       morphDuration: 1200,
       reflow: 'translate',
+      morphGrains: true,
       enter: 'pour',
       exit: 'fall',
     },
@@ -251,13 +266,55 @@ function defaultConfig(): Cfg {
       y: { show: true, ticks: 5, label: 'value', gridLines: true, color: '#8a93a6', fontPx: 11 },
     },
     legend: { show: true, position: 'bottom', align: 'center', swatch: 'disc' },
-    currentValue: { show: true, mode: 'pointer', showGuide: true, color: '#cdd3de' },
+    currentValue: {
+      show: true,
+      mode: 'pointer',
+      guide: 'y',
+      markers: true,
+      color: '#cdd3de',
+    },
     line: {
+      stack: false,
       fill: { opacity: 0.12 },
       line: { style: 'spline', width: 2, opacity: 1 },
       reveal: { start: 'afterPour', duration: 600, ease: 'easeOutCubic', grainsTo: 0.1 },
     },
     fps: { position: 'off', color: '#cdd3de' },
+  };
+}
+
+// Named starting points. Each is a full config: `Default` is the untouched
+// baseline; the others overlay `defaultConfig()` with a distinct look.
+const PRESET_NAMES = ['Default', 'Visible particles + hover', 'Grainy low-fill'] as const;
+type PresetName = (typeof PRESET_NAMES)[number];
+
+// Strong hover shared by presets 2 & 3: dim the rest, gain + jitter the target.
+const LOUD_HOVER = {
+  effects: ['highlight', 'jitter', 'opacity'],
+  highlightGain: 2.4,
+  jitterAmp: 0.006,
+  opacity: 0.2,
+  fadeMs: 160,
+};
+
+function presets(): Record<PresetName, Cfg> {
+  return {
+    Default: defaultConfig(),
+    'Visible particles + hover': deepMerge(defaultConfig(), {
+      grainDensity: 2.6,
+      lineThickness: 0.05,
+      grain: { sizePx: 3.4, jitter: 0.7 },
+      interaction: { hover: LOUD_HOVER },
+      line: { fill: { opacity: 0.2 }, reveal: { grainsTo: 0.5 } },
+    }),
+    'Grainy low-fill': deepMerge(defaultConfig(), {
+      grainDensity: 3.2,
+      lineThickness: 0.06,
+      grain: { sizePx: 3.4, jitter: 0.7 },
+      interaction: { hover: LOUD_HOVER },
+      // Fill nearly gone; grains stay near-opaque so the texture dominates.
+      line: { fill: { opacity: 0.05 }, reveal: { grainsTo: 1 } },
+    }),
   };
 }
 
@@ -392,6 +449,7 @@ const GROUPS: ControlGroup[] = [
           { value: 'withLine', label: 'With line' },
         ],
       },
+      { kind: 'checkbox', label: 'Animate grains on morph', path: 'animation.morphGrains' },
       {
         kind: 'select',
         label: 'Enter (added)',
@@ -508,6 +566,7 @@ const GROUPS: ControlGroup[] = [
   {
     title: 'Line (style & fill)',
     controls: [
+      { kind: 'checkbox', label: 'Stack values (area)', path: 'line.stack' },
       {
         kind: 'select',
         label: 'Line style',
@@ -578,12 +637,23 @@ const GROUPS: ControlGroup[] = [
         kind: 'select',
         label: 'Mode',
         path: 'currentValue.mode',
-        options: (['pointer', 'top', 'right', 'bottom', 'left'] as const).map((v) => ({
+        options: (['pointer', 'axis', 'top', 'right', 'bottom', 'left'] as const).map((v) => ({
           value: v,
-          label: v,
+          label: v === 'axis' ? 'On axes' : v,
         })),
       },
-      { kind: 'checkbox', label: 'Guide line', path: 'currentValue.showGuide' },
+      {
+        kind: 'select',
+        label: 'Cursor line',
+        path: 'currentValue.guide',
+        options: [
+          { value: 'none', label: 'none' },
+          { value: 'y', label: 'horizontal' },
+          { value: 'x', label: 'vertical' },
+          { value: 'both', label: 'crosshair' },
+        ],
+      },
+      { kind: 'checkbox', label: 'Axis markers', path: 'currentValue.markers' },
       { kind: 'color', label: 'Color', path: 'currentValue.color' },
     ],
   },
@@ -621,6 +691,25 @@ function toggle(label: string, onChange: (on: boolean) => void): HTMLLabelElemen
   const span = document.createElement('span');
   span.textContent = label;
   wrap.append(cb, span);
+  return wrap;
+}
+
+/** Labeled <select> of preset names; fires `onPick` on choice. */
+function presetPicker(names: readonly string[], onPick: (name: string) => void): HTMLLabelElement {
+  const wrap = document.createElement('label');
+  wrap.style.cssText =
+    'display:inline-flex;gap:5px;align-items:center;margin-right:12px;font-size:13px;';
+  const span = document.createElement('span');
+  span.textContent = 'Preset';
+  const sel = document.createElement('select');
+  for (const n of names) {
+    const opt = document.createElement('option');
+    opt.value = n;
+    opt.textContent = n;
+    sel.append(opt);
+  }
+  sel.addEventListener('change', () => onPick(sel.value));
+  wrap.append(span, sel);
   return wrap;
 }
 

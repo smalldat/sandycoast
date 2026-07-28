@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Data model &amp; shared config — @smalldat/visual</title>
+  <meta name="description" content="The generic Point data model, scales, colors, easing and backends shared by every visual." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <span class="dot"></span>
+      <span>@smalldat/visual<small>sand-based charts</small></span>
+    </a>
+    <nav class="nav-group">
+      <h4>Start here</h4>
+      <a href="index.html">Overview</a>
+      <a href="index.html#install">Install &amp; publish</a>
+      <a href="data-model.html" class="active">Data model &amp; shared config</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Visuals</h4>
+      <a href="bar-chart.html">Bar chart</a>
+      <a href="line-chart.html">Line chart</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Project</h4>
+      <a href="license.html">License</a>
+      <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <span class="eyebrow">Shared</span>
+    <h1>Data model &amp; shared config</h1>
+    <p class="lede">Every visual consumes the same generic <code>x</code>/<code>y</code>/<code>z</code> data
+      model and the same palette, easing and backend options. Learn it once; it applies to bars, lines
+      and every visual to come.</p>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <a href="#dataset">DataSet &amp; Point</a>
+      <a href="#fromrows">Building from rows</a>
+      <a href="#helpers">Array helpers</a>
+      <a href="#scales">Scales</a>
+      <a href="#colors">Colors</a>
+      <a href="#easing">Easing</a>
+      <a href="#backends">Backends</a>
+      <a href="#exports">Exports</a>
+    </div>
+
+    <h2 id="dataset">DataSet &amp; Point</h2>
+    <p>A <code>DataSet</code> is a flat array of points plus optional explicit field types. Each
+      <code>Point</code> has <code>x</code> and <code>y</code> (numeric, datetime, or categorical string)
+      and an optional series key <code>z</code>. Omit <code>z</code> for a single series.</p>
+    <pre><code><span class="tok-key">type</span> <span class="tok-typ">Scalar</span> = <span class="tok-typ">number</span> | <span class="tok-typ">Date</span> | <span class="tok-typ">string</span>;
+<span class="tok-key">type</span> <span class="tok-typ">FieldType</span> = <span class="tok-str">'number'</span> | <span class="tok-str">'time'</span> | <span class="tok-str">'category'</span>;
+
+<span class="tok-key">interface</span> <span class="tok-typ">Point</span> {
+  x: <span class="tok-typ">Scalar</span>;
+  y: <span class="tok-typ">Scalar</span>;
+  z?: <span class="tok-typ">Scalar</span>;   <span class="tok-com">// optional series key</span>
+}
+
+<span class="tok-key">interface</span> <span class="tok-typ">DataSet</span> {
+  points: <span class="tok-typ">Point</span>[];
+  xType?: <span class="tok-typ">FieldType</span>;   <span class="tok-com">// inferred from the first non-null value when omitted</span>
+  yType?: <span class="tok-typ">FieldType</span>;
+  zType?: <span class="tok-typ">FieldType</span>;
+}</code></pre>
+    <table class="prop-table">
+      <thead><tr><th>Field type</th><th>When</th><th>Scale used</th></tr></thead>
+      <tbody>
+        <tr><td><code>'number'</code></td><td>Values are numbers</td><td>Linear</td></tr>
+        <tr><td><code>'time'</code></td><td>Values are <code>Date</code>s</td><td>Time</td></tr>
+        <tr><td><code>'category'</code></td><td>Values are strings</td><td>Band</td></tr>
+      </tbody>
+    </table>
+    <div class="note">Types are <strong>inferred</strong> from the first non-null value. Declare them
+      explicitly on the <code>DataSet</code> only when inference would guess wrong (e.g. numeric-looking
+      category codes).</div>
+
+    <h2 id="fromrows">Building from arbitrary rows</h2>
+    <p><code>fromRows(rows, spec)</code> maps any array of objects into a <code>DataSet</code> using
+      accessor functions.</p>
+    <pre><code><span class="tok-key">import</span> { fromRows } <span class="tok-key">from</span> <span class="tok-str">'@smalldat/visual'</span>;
+
+<span class="tok-key">const</span> data = <span class="tok-fn">fromRows</span>(salesRows, {
+  x: (r) => r.quarter,
+  y: (r) => r.revenue,
+  z: (r) => r.region,     <span class="tok-com">// optional</span>
+  <span class="tok-com">// xType / yType / zType optional — inferred otherwise</span>
+});</code></pre>
+
+    <h2 id="helpers">Array helpers</h2>
+    <p>The pure functions behind <code>chart.update</code> / <code>add</code> / <code>remove</code> are
+      exported so you can transform point arrays off-chart (e.g. in a store).</p>
+    <table class="prop-table">
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>patchPoints</code></td><td class="type">(points, PointPatch[]) → Point[]</td><td>Set <code>y</code> on existing points, matched by <code>x</code> (and <code>z</code> if given).</td></tr>
+        <tr><td><code>appendPoints</code></td><td class="type">(points, Point[]) → Point[]</td><td>Append new points.</td></tr>
+        <tr><td><code>removePoints</code></td><td class="type">(points, PointRef[]) → Point[]</td><td>Remove by index (negative = from end) or <code>{ x, z? }</code> match.</td></tr>
+        <tr><td><code>seriesKeys</code></td><td class="type">(points) → Scalar[]</td><td>Distinct <code>z</code> values, in first-seen order.</td></tr>
+        <tr><td><code>validate</code> / <code>inferType</code> / <code>resolveTypes</code> / <code>toNumeric</code></td><td class="type">—</td><td>Lower-level data utilities; <code>validate</code> throws <code>DataError</code> on malformed input.</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="tok-key">type</span> <span class="tok-typ">PointPatch</span> = { x: <span class="tok-typ">Scalar</span>; z?: <span class="tok-typ">Scalar</span>; y: <span class="tok-typ">Scalar</span> };
+<span class="tok-key">type</span> <span class="tok-typ">PointRef</span>   = <span class="tok-typ">number</span> | { x: <span class="tok-typ">Scalar</span>; z?: <span class="tok-typ">Scalar</span> };  <span class="tok-com">// -1 = last point</span></code></pre>
+
+    <h2 id="scales">Scales</h2>
+    <p>Charts pick a scale from each field's type automatically. The scale primitives are exported for
+      custom visuals.</p>
+    <table class="prop-table">
+      <thead><tr><th>Export</th><th>For</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>LinearScale</code></td><td>numbers</td><td>Continuous linear mapping.</td></tr>
+        <tr><td><code>TimeScale</code></td><td><code>Date</code>s</td><td>Continuous time mapping with date-aware ticks.</td></tr>
+        <tr><td><code>BandScale</code></td><td>categories</td><td>Discrete band mapping (one slot per category).</td></tr>
+        <tr><td><code>makeScale</code></td><td>—</td><td>Factory: returns the right <code>Scale</code> for a <code>FieldType</code>.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="colors">Colors</h2>
+    <p>Series colors cycle through <code>colors</code> (or <code>DEFAULT_PALETTE</code> if unset). Any CSS
+      hex (<code>#rgb</code>, <code>#rrggbb</code>, <code>#rrggbbaa</code>) or <code>rgb()</code> /
+      <code>rgba()</code> string works. <code>parseColor</code> and <code>cssRGBA</code> convert to/from
+      the internal <code>RGBA</code> (0..1) tuple.</p>
+    <pre><code><span class="tok-key">import</span> { DEFAULT_PALETTE } <span class="tok-key">from</span> <span class="tok-str">'@smalldat/visual'</span>;
+<span class="tok-com">// ['#e8598b', '#8bc4e8', '#e8c45a', '#5ae89a', '#b98be8', '#e8895a']</span></code></pre>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px">
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono)"><span style="width:16px;height:16px;border-radius:4px;background:#e8598b"></span>#e8598b</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono)"><span style="width:16px;height:16px;border-radius:4px;background:#8bc4e8"></span>#8bc4e8</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono)"><span style="width:16px;height:16px;border-radius:4px;background:#e8c45a"></span>#e8c45a</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono)"><span style="width:16px;height:16px;border-radius:4px;background:#5ae89a"></span>#5ae89a</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono)"><span style="width:16px;height:16px;border-radius:4px;background:#b98be8"></span>#b98be8</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono)"><span style="width:16px;height:16px;border-radius:4px;background:#e8895a"></span>#e8895a</span>
+    </div>
+
+    <h2 id="easing">Easing</h2>
+    <p>Used by <code>animation.ease</code> and every <code>reveal.ease</code>.</p>
+    <table class="prop-table">
+      <thead><tr><th>Value</th><th>Feel</th></tr></thead>
+      <tbody>
+        <tr><td><code>'linear'</code></td><td>Constant speed.</td></tr>
+        <tr><td><code>'easeOutCubic'</code> <span class="pill">default</span></td><td>Fast start, gentle stop.</td></tr>
+        <tr><td><code>'easeOutQuint'</code></td><td>Sharper deceleration than cubic.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="backends">Rendering backends</h2>
+    <p>Set <code>backend</code> to force one, or leave it <code>'auto'</code> to prefer WebGPU and fall
+      back to Canvas2D. All backends implement the same lerp + jitter contract, so visuals look the same
+      regardless of which one runs. Read the active one via <code>chart.backend</code> after
+      <code>whenReady()</code>.</p>
+    <table class="prop-table">
+      <thead><tr><th>Value</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>'auto'</code> <span class="pill">default</span></td><td>WebGPU if available, else Canvas2D.</td></tr>
+        <tr><td><code>'webgpu'</code></td><td>Force WebGPU (best for high grain counts).</td></tr>
+        <tr><td><code>'webgl2'</code></td><td>Reserved — planned fallback, not yet implemented.</td></tr>
+        <tr><td><code>'canvas2d'</code></td><td>Force Canvas2D (widest compatibility).</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="exports">What's exported</h2>
+    <p>From <code>@smalldat/visual</code>:</p>
+    <ul>
+      <li><strong>Charts:</strong> <code>BarChart</code>, <code>LineChart</code> (+ their config &amp; meta types).</li>
+      <li><strong>Data:</strong> <code>fromRows</code>, <code>patchPoints</code>, <code>appendPoints</code>, <code>removePoints</code>, <code>seriesKeys</code>, <code>validate</code>, <code>inferType</code>, <code>resolveTypes</code>, <code>toNumeric</code>, <code>DataError</code> (+ <code>DataSet</code>, <code>Point</code>, <code>Scalar</code>, <code>FieldType</code>, <code>PointPatch</code>, <code>PointRef</code> types).</li>
+      <li><strong>Scales:</strong> <code>LinearScale</code>, <code>TimeScale</code>, <code>BandScale</code>, <code>makeScale</code>.</li>
+      <li><strong>Color:</strong> <code>DEFAULT_PALETTE</code>, <code>parseColor</code>, <code>cssRGBA</code>.</li>
+      <li><strong>Rendering &amp; particles (advanced / custom visuals):</strong> <code>pickRenderer</code>, <code>allocGrains</code>, <code>packBars</code>, <code>packLine</code>, <code>grainCounts</code>, <code>scatterStarts</code>, <code>evalGrain</code>, <code>ease</code>, and their types.</li>
+    </ul>
+
+    <div class="foot">
+      <p>© <span id="yr">2026</span> · <a href="license.html">License</a> ·
+        <a href="bar-chart.html">Bar chart →</a></p>
+    </div>
+  </main>
+</div>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
+</body>
+</html>

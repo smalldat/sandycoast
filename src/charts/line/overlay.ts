@@ -1,10 +1,18 @@
+import type { Scalar } from '../../core/data/types.js';
 import type { RGBA } from '../../core/render/types.js';
 import { cssRGBA } from '../../core/util/color.js';
 import { type AxisModel, formatNumber } from '../bar/axis.js';
 import type { ResolvedAxis, ResolvedChrome } from '../bar/chrome.js';
-import type { ResolvedLineStyle } from './lineStyle.js';
 import type { SeriesPath } from './layout.js';
+import type { ResolvedLineStyle } from './lineStyle.js';
 import type { LineMeta } from './types.js';
+
+/** Compact label for any scalar (number / date / string) used on axis markers. */
+function scalarLabel(v: Scalar): string {
+  if (typeof v === 'number') return formatNumber(v);
+  if (v instanceof Date) return v.toLocaleDateString('en-US');
+  return String(v);
+}
 
 /** Canvas2D font string for an axis's ticks/title, scaled to device px. */
 function axisFont(cfg: ResolvedAxis, dpr: number): string {
@@ -28,6 +36,8 @@ export interface OverlayState {
   /** Per-series polylines to stroke/fill. */
   paths: SeriesPath[];
   lineStyle: ResolvedLineStyle;
+  /** Stacked area mode: fill from each point's stack floor with straight edges. */
+  stacked: boolean;
   /** Reveal factor in [0,1]; scales line/fill opacity. */
   solid: number;
   /** Per-point hover weight in [0,1] (index = pointId); brightens the series. */
@@ -114,26 +124,29 @@ export class Overlay {
     const ctx = this.ctx;
     const { fill, line } = s.lineStyle;
     const solid = s.solid;
-    const spline = line.style === 'spline';
+    // Stacked bands must tile without gaps, so their edges are straight (a spline
+    // top wouldn't meet the next band's straight floor). Plain areas keep spline.
+    const spline = line.style === 'spline' && !s.stacked;
 
     for (const path of s.paths) {
       const pts = path.points.map((mi) => {
         const m = s.metas[mi]!;
-        return { x: dx(m.pos), y: dy(m.height) };
+        return { x: dx(m.pos), y: dy(m.height), base: dy(m.baseHeight) };
       });
       if (pts.length === 0) continue;
-      const base = dy(0);
       // All of a series' points share the same eased weight; take the first.
       const w = s.hoverWeights[path.points[0]!] ?? 0;
       const gain = w > 0 ? 1 + (s.highlightGain - 1) * w : 1;
 
       if (fill.on) {
         ctx.beginPath();
-        ctx.moveTo(pts[0]!.x, base);
+        ctx.moveTo(pts[0]!.x, pts[0]!.base);
         ctx.lineTo(pts[0]!.x, pts[0]!.y);
         if (spline) strokeSplinePath(ctx, pts);
         else for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y);
-        ctx.lineTo(pts[pts.length - 1]!.x, base);
+        // Trace the stack floor back under the top edge (reversed) so the band
+        // sits on the series below; for plain areas every base is the baseline.
+        for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i]!.x, pts[i]!.base);
         ctx.closePath();
         ctx.fillStyle = gainedRGBA(path.color, gain, fill.opacity * solid);
         ctx.fill();
@@ -276,6 +289,40 @@ export class Overlay {
     }
   }
 
+  /**
+   * A filled highlight label pinned to an axis: `'y'` sits just left of the value
+   * axis, vertically centered on `py`; `'x'` sits just below the X axis,
+   * horizontally centered on `px`. Dark text over the axis color reads as a lit
+   * tick at the cursor's row/column.
+   */
+  private drawAxisMarker(
+    px: number,
+    py: number,
+    text: string,
+    axis: 'x' | 'y',
+    color: string,
+    dpr: number,
+  ): void {
+    const ctx = this.ctx;
+    const fontPx = 11 * dpr;
+    ctx.save();
+    ctx.font = `${fontPx}px system-ui, sans-serif`;
+    const padX = 5 * dpr;
+    const padY = 3 * dpr;
+    const bw = ctx.measureText(text).width + padX * 2;
+    const bh = fontPx + padY * 2;
+    const bx = axis === 'y' ? px - bw - 6 * dpr : px - bw / 2;
+    const by = axis === 'y' ? py - bh / 2 : py + 6 * dpr;
+    ctx.fillStyle = color;
+    roundRect(ctx, bx, by, bw, bh, 3 * dpr);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(16,20,28,0.95)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, bx + bw / 2, by + bh / 2);
+    ctx.restore();
+  }
+
   private drawCurrentValue(
     s: OverlayState,
     leftPx: number,
@@ -291,19 +338,32 @@ export class Overlay {
     const ctx = this.ctx;
     const cx = dx(p.pos);
     const cy = dy(p.height);
+    const onAxis = cfg.mode === 'axis';
 
-    if (cfg.showGuide) {
+    // Guide line(s) to the hovered vertex.
+    if (cfg.guideY || cfg.guideX) {
       ctx.save();
       ctx.strokeStyle = cfg.color;
       ctx.globalAlpha = 0.5;
       ctx.lineWidth = dpr;
       ctx.setLineDash([4 * dpr, 4 * dpr]);
-      ctx.beginPath();
-      ctx.moveTo(leftPx, cy);
-      ctx.lineTo(cx, cy);
-      ctx.stroke();
+      if (cfg.guideY) {
+        ctx.beginPath();
+        ctx.moveTo(leftPx, cy);
+        ctx.lineTo(cx, cy);
+        ctx.stroke();
+      }
+      if (cfg.guideX) {
+        ctx.beginPath();
+        ctx.moveTo(cx, bottomPx);
+        ctx.lineTo(cx, cy);
+        ctx.stroke();
+      }
       ctx.restore();
-      // Marker dot at the hovered vertex.
+    }
+
+    // Marker dot at the hovered vertex whenever a guide is shown.
+    if (cfg.guideY || cfg.guideX) {
       ctx.save();
       ctx.fillStyle = cssRGBA(p.color);
       ctx.beginPath();
@@ -311,6 +371,17 @@ export class Overlay {
       ctx.fill();
       ctx.restore();
     }
+
+    // Highlighted value markers on the axes.
+    if (s.chrome.y.show && (onAxis || (cfg.markers && cfg.guideY))) {
+      this.drawAxisMarker(leftPx, cy, formatNumber(p.yValue), 'y', cfg.color, dpr);
+    }
+    if (s.chrome.x.show && (onAxis || (cfg.markers && cfg.guideX))) {
+      this.drawAxisMarker(cx, bottomPx, scalarLabel(p.xValue), 'x', cfg.color, dpr);
+    }
+
+    // In 'axis' mode the readout lives on the axes; skip the floating box.
+    if (onAxis) return;
 
     // `currentValue.format` is shared with the bar chart (typed for BarMeta);
     // for a line chart it receives this vertex's LineMeta.

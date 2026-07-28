@@ -26,6 +26,12 @@ export type LineShape = 'none' | 'straight' | 'spline';
  * Off by default; a config without `line` renders exactly as before.
  */
 export interface LineStyleConfig {
+  /**
+   * Stack the series into a stacked area chart: each series sits on top of the
+   * cumulative total of the series below it (at every x), and the value (Y) axis
+   * spans the stack total. Best paired with a visible `fill`. Default false.
+   */
+  stack?: boolean;
   /** Optional area fill below the line; always the series color, opacity only. */
   fill?: {
     /** Fill opacity 0..1. Default 1. */
@@ -81,10 +87,10 @@ export interface LineChartConfig {
     settleJitter?: number;
   };
   animation?: {
-    /** Per-grain duration, seconds. */
+    /** Per-grain duration, milliseconds. */
     duration?: number;
     ease?: Easing;
-    /** Pour stagger spread, seconds. */
+    /** Pour stagger spread, milliseconds. */
     stagger?: number;
     /**
      * Transition length in **ms** for `update`/`add`/`remove` (line tween +
@@ -99,6 +105,14 @@ export interface LineChartConfig {
      * Default `'translate'`.
      */
     reflow?: 'translate' | 'reshuffle' | 'withLine';
+    /**
+     * Animate the sand grains during an `update`/`add`/`remove` morph. `true`
+     * (default) flows/pours/drops grains per `reflow`/`enter`/`exit`; `false`
+     * snaps every grain straight to its new position with no motion (added
+     * grains just appear, removed grains just vanish) so **only the solid line
+     * tweens** on a data change. Ignored for the initial pour-in. Default `true`.
+     */
+    morphGrains?: boolean;
     /**
      * How an **added** point's grains enter. `'pour'` (default) falls from
      * above the plot; `'rise'` grows up from the base; `'continue'` skips the
@@ -156,8 +170,10 @@ export interface LineMeta {
   yValue: number;
   /** Layout-space x center [0,1] (shared across series at this x-slot). */
   pos: number;
-  /** Layout-space y in [0,1] (0 = baseline). */
+  /** Layout-space y of this vertex (top of its band when stacked), 0 = baseline. */
   height: number;
+  /** Layout-space y of this vertex's stack floor (0 when unstacked). */
+  baseHeight: number;
   color: RGBA;
 }
 

@@ -35,6 +35,8 @@ interface Resolved {
   /** Transition window (line tween + grain fade) for update/add/remove, seconds. */
   morphDuration: number;
   reflow: 'translate' | 'reshuffle' | 'withLine';
+  /** Animate grains on morph, or snap them to targets (line-only transition). */
+  morphGrains: boolean;
   enter: 'pour' | 'rise' | 'continue';
   exit: 'fall' | 'vanish';
   hoverEffects: Set<'highlight' | 'jitter' | 'opacity'>;
@@ -64,6 +66,7 @@ function resolve(cfg: LineChartConfig): Resolved {
     stagger,
     morphDuration: anim?.morphDuration != null ? anim.morphDuration / 1000 : duration + stagger,
     reflow: anim?.reflow ?? 'translate',
+    morphGrains: anim?.morphGrains ?? true,
     enter: anim?.enter ?? 'pour',
     exit: anim?.exit ?? 'fall',
     hoverEffects: new Set(hover?.effects ?? ['highlight', 'jitter']),
@@ -300,6 +303,7 @@ export class LineChart {
       metas: this.metas,
       paths: this.layout.paths,
       lineStyle: this.lineStyle,
+      stacked: this.lineStyle.stack,
       solid,
       hoverWeights: this.hoverWeights,
       highlightGain: this.cfg.hoverEffects.has('highlight') ? this.cfg.highlightGain : 1,
@@ -373,7 +377,7 @@ export class LineChart {
     const prevGrains = this.grains;
     const prevMetas = this.metas;
 
-    const layout = layoutLine(data, this.cfg.palette);
+    const layout = layoutLine(data, this.cfg.palette, this.lineStyle.stack);
     const { segs, metas } = layout;
     this.layout = layout;
     this.metas = metas;
@@ -391,12 +395,15 @@ export class LineChart {
     const total = counts.reduce((a, b) => a + b, 0);
 
     const canMorph = mode === 'morph' && prevGrains.count > 0 && prevMetas.length > 0;
+    // When grain morph is disabled, grains snap to their targets — no flowing
+    // pool, no falling ghosts; only the solid line tweens.
+    const animateGrains = canMorph && this.cfg.morphGrains;
 
     let oldGrainsByPoint: Map<number, number[]> | null = null;
     let oldPoolByKey: Map<string, number[]> | null = null;
     const ghostPoints: number[] = [];
     let ghostTotal = 0;
-    if (canMorph) {
+    if (animateGrains) {
       oldGrainsByPoint = groupGrainsByPoint(prevGrains);
       oldPoolByKey = new Map();
       for (const m of prevMetas) {
@@ -427,10 +434,19 @@ export class LineChart {
     if (!canMorph) {
       scatterStarts(g, { duration: this.cfg.duration, stagger: this.cfg.stagger, seed: 7 });
       this.morph = null;
-    } else {
+    } else if (animateGrains) {
       this.morphGrainStarts(g, segs, metas, counts, prevGrains, oldPoolByKey!);
       if (ghostPoints.length > 0) {
         this.appendGhosts(g, total, ghostPoints, prevGrains, oldGrainsByPoint!);
+      }
+      this.armLineTween(metas, prevMetas);
+    } else {
+      // Snap every grain to its target, settled (negative delay => te>=1 at
+      // now=0): no motion, only the line tween below animates the change.
+      for (let i = 0; i < total; i++) {
+        g.startX[i] = g.targetX[i]!;
+        g.startY[i] = g.targetY[i]!;
+        g.delay[i] = -this.cfg.duration;
       }
       this.armLineTween(metas, prevMetas);
     }

@@ -45,7 +45,10 @@ export function grainCounts(bars: BarRect[], opts: PackOptions): number[] {
   const max = opts.maxGrains ?? DEFAULT_MAX;
   if (total <= max || total === 0) return raw;
   const scale = max / total;
-  return raw.map((n) => Math.max(n > 0 ? 1 : 0, Math.floor(n * scale)));
+  // Scale strictly (floor to 0 when a bar's share rounds out) so the total
+  // honors `maxGrains` no matter how many bars there are — grain cost stays
+  // bounded by the ceiling, not by the bar count.
+  return raw.map((n) => Math.max(0, Math.floor(n * scale)));
 }
 
 /**
@@ -131,13 +134,18 @@ export function lineGrainCounts(segs: LineSeg[], opts: LinePackOptions): number[
   const thickness = Math.max(0, opts.thickness);
   const raw = segs.map((s) => {
     const len = Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
-    return Math.max(len > 0 ? 1 : 0, Math.round(density * len * thickness * 1e4));
+    // Grains per segment ∝ its ribbon area (length × thickness). No per-segment
+    // floor: total ≈ density × totalPathLength × thickness, which depends on the
+    // *shape* of the line, not on how many points sample it. A zero-length
+    // segment (lone vertex) still gets a small dab so it renders.
+    if (len === 0) return Math.max(1, Math.round(density * thickness * thickness * 1e4));
+    return Math.round(density * len * thickness * 1e4);
   });
   const total = raw.reduce((a, b) => a + b, 0);
   const max = opts.maxGrains ?? DEFAULT_MAX;
   if (total <= max || total === 0) return raw;
   const scale = max / total;
-  return raw.map((n) => Math.max(n > 0 ? 1 : 0, Math.floor(n * scale)));
+  return raw.map((n) => Math.max(0, Math.floor(n * scale)));
 }
 
 /**

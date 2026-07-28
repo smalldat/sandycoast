@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "High-performance point/sand-based visual components (not SVG).",
   "type": "module",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.js",

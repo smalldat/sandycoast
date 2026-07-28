@@ -31,6 +31,8 @@ export interface ResolvedReveal {
 export interface ResolvedLineStyle {
   /** True when any solid layer is drawn (gates overlay mount + reveal loop). */
   enabled: boolean;
+  /** Stack series into a stacked area chart. */
+  stack: boolean;
   fill: ResolvedLineFill;
   line: ResolvedLine;
   reveal: ResolvedReveal;
@@ -62,5 +64,5 @@ export function resolveLineStyle(cfg: LineChartConfig): ResolvedLineStyle {
     grainsTo: rv?.grainsTo ?? 0,
   };
 
-  return { enabled: fill.on || line.on, fill, line, reveal };
+  return { enabled: fill.on || line.on, stack: l?.stack ?? false, fill, line, reveal };
 }
