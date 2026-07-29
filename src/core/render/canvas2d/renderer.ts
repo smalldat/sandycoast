@@ -62,6 +62,17 @@ export class Canvas2DRenderer implements Renderer {
     const [px0, py0, px1, py1] = u.plotRect;
     const pw = px1 - px0;
     const ph = py1 - py0;
+    const vsx = u.viewScale?.[0] ?? 1;
+    const vsy = u.viewScale?.[1] ?? 1;
+    const vox = u.viewOffset?.[0] ?? 0;
+    const voy = u.viewOffset?.[1] ?? 0;
+    // Clip grains to the plot rect under pan/zoom (mirrors the GPU scissor).
+    if (u.clipToPlot) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(px0 * this.w, (1 - py1) * this.h, pw * this.w, ph * this.h);
+      ctx.clip();
+    }
     // Group draws by color to cut fillStyle churn; hovered grains (weight>0)
     // fall out of the group with a per-grain (eased) highlight.
     for (let ci = 0; ci < u.palette.length; ci++) {
@@ -70,10 +81,22 @@ export class Canvas2DRenderer implements Renderer {
       for (let i = 0; i < g.count; i++) {
         if (g.colorIdx[i] !== ci) continue;
         const w = weights[g.barId[i]!] ?? 0;
-        evalGrain(g, i, u.now, u.duration, u.easing, u.settleJitterAmp + u.hoverJitterAmp * w, tmp);
-        // layout [0,1] y-up -> plot rect -> device px (y-down)
-        const px = (px0 + tmp.x * pw) * this.w;
-        const py = (1 - (py0 + tmp.y * ph)) * this.h;
+        evalGrain(g, i, u.now, u.duration, u.easing, u.settleJitterAmp, tmp, vsx, vsy);
+        // Hover jitter, matching the GPU: settle-independent, and divided by the
+        // view scale so its on-screen amplitude stays constant under zoom.
+        let jx = tmp.x;
+        let jy = tmp.y;
+        if (w > 0 && u.hoverJitterAmp > 0) {
+          const s = g.seed[i]!;
+          const hAmp = u.hoverJitterAmp * w;
+          jx += (Math.sin(u.now * 9.0 + s * 220.0) * hAmp) / vsx;
+          jy += (Math.cos(u.now * 8.3 + s * 190.0) * hAmp) / vsy;
+        }
+        // layout [0,1] y-up -> pan/zoom -> plot rect -> device px (y-down)
+        const vx = jx * vsx + vox;
+        const vy = jy * vsy + voy;
+        const px = (px0 + vx * pw) * this.w;
+        const py = (1 - (py0 + vy * ph)) * this.h;
 
         if (w > 0.001) {
           const alpha = opOn ? fade + (u.hoverOpacity - fade) * w : fade;
@@ -94,6 +117,7 @@ export class Canvas2DRenderer implements Renderer {
         }
       }
     }
+    if (u.clipToPlot) ctx.restore();
   }
 
   dispose(): void {

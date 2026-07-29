@@ -48,6 +48,7 @@
       <a href="#colors">Colors</a>
       <a href="#easing">Easing</a>
       <a href="#backends">Backends</a>
+      <a href="#panzoom">Pan &amp; zoom</a>
       <a href="#exports">Exports</a>
     </div>
 
@@ -165,6 +166,69 @@
       </tbody>
     </table>
 
+    <h2 id="panzoom">Pan &amp; zoom</h2>
+    <p>Every visual shares one pan/zoom implementation. It's a single affine transform applied in
+      layout space — <code>p' = p · scale + offset</code> — so grains (on the GPU / Canvas2D) and the
+      chrome (axes, grid, bars/line, current value) all move together and stay pixel-aligned. Off by
+      default; add a <code>panZoom</code> block to enable it. When on, grains are clipped to the plot
+      rect so panned content never spills into the axis/legend gutters.</p>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">BarChart</span>(host, {
+  data,
+  <span class="tok-key">panZoom</span>: {
+    enabled: <span class="tok-key">true</span>,           <span class="tok-com">// master switch (default false)</span>
+    axes: <span class="tok-str">'both'</span>,           <span class="tok-com">// 'x' | 'y' | 'both' — which axes may pan/zoom</span>
+    minZoom: <span class="tok-num">1</span>,              <span class="tok-com">// fit; can't zoom out past the data extent</span>
+    maxZoom: <span class="tok-num">10</span>,
+    wheel: <span class="tok-key">true</span>,             <span class="tok-com">// zoom on wheel / trackpad</span>
+    drag: <span class="tok-key">true</span>,              <span class="tok-com">// pan on pointer drag</span>
+    controls: {                <span class="tok-com">// on-chart +/-/reset buttons</span>
+      show: <span class="tok-key">true</span>,
+      position: <span class="tok-str">'top-right'</span>, <span class="tok-com">// 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'</span>
+      step: <span class="tok-num">1.4</span>,             <span class="tok-com">// zoom factor per +/- click</span>
+    },
+  },
+});</code></pre>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>enabled</code></td><td class="type">boolean</td><td><code>false</code></td><td>Master switch for drag / wheel / UI pan &amp; zoom.</td></tr>
+        <tr><td><code>axes</code></td><td class="type">'x' | 'y' | 'both'</td><td><code>'both'</code></td><td>Restrict pan/zoom to one axis.</td></tr>
+        <tr><td><code>minZoom</code> / <code>maxZoom</code></td><td class="type">number</td><td><code>1</code> / <code>10</code></td><td>Zoom clamp. <code>minZoom: 1</code> keeps the data filling the plot.</td></tr>
+        <tr><td><code>wheel</code> / <code>drag</code></td><td class="type">boolean</td><td><code>true</code></td><td>Enable wheel zoom / drag pan input.</td></tr>
+        <tr><td><code>controls.show</code></td><td class="type">boolean</td><td><code>enabled</code></td><td>Draw the on-chart zoom buttons.</td></tr>
+        <tr><td><code>controls.position</code></td><td class="type">ZoomCorner</td><td><code>'top-right'</code></td><td>Corner to pin to — anchored inside the plot and nudged clear of the FPS meter, so legend / FPS / zoom never overlap.</td></tr>
+        <tr><td><code>controls.step</code></td><td class="type">number</td><td><code>1.4</code></td><td>Zoom multiplier per <code>+</code>/<code>−</code> click.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">The zoom controls are anchored to a <strong>plot</strong> corner (inside the axes and
+      legend), not the element corner, so they never sit on top of the legend. If the FPS meter shares
+      the same corner the controls drop just below it.</div>
+
+    <h3>Programmatic API — the <code>PanZoomable</code> interface</h3>
+    <p>Both charts implement the same interface, so pan and zoom can be driven from code identically
+      regardless of chart type. Coordinates are <strong>plot-local fractions</strong> in
+      <code>[0,1]</code> (y-up): <code>(0,0)</code> is the plot's bottom-left, <code>(1,1)</code> the
+      top-right.</p>
+    <pre><code><span class="tok-key">interface</span> <span class="tok-typ">PanZoomable</span> {
+  <span class="tok-fn">getView</span>(): <span class="tok-typ">ViewTransform</span>;                       <span class="tok-com">// { scale:[sx,sy], offset:[ox,oy] }</span>
+  <span class="tok-fn">setView</span>(view: <span class="tok-typ">Partial</span>&lt;<span class="tok-typ">ViewTransform</span>&gt;): <span class="tok-typ">void</span>;   <span class="tok-com">// clamped to the configured limits</span>
+  <span class="tok-fn">panBy</span>(dx: <span class="tok-typ">number</span>, dy: <span class="tok-typ">number</span>): <span class="tok-typ">void</span>;         <span class="tok-com">// positive dx moves the data right</span>
+  <span class="tok-fn">panTo</span>(x: <span class="tok-typ">number</span>, y: <span class="tok-typ">number</span>): <span class="tok-typ">void</span>;         <span class="tok-com">// put data fraction (x,y) at the plot origin</span>
+  <span class="tok-fn">zoomBy</span>(factor: <span class="tok-typ">number</span>, cx?: <span class="tok-typ">number</span>, cy?: <span class="tok-typ">number</span>): <span class="tok-typ">void</span>; <span class="tok-com">// about (cx,cy), default center</span>
+  <span class="tok-fn">zoomTo</span>(scale: <span class="tok-typ">number</span>, cx?: <span class="tok-typ">number</span>, cy?: <span class="tok-typ">number</span>): <span class="tok-typ">void</span>;
+  <span class="tok-fn">resetView</span>(): <span class="tok-typ">void</span>;                            <span class="tok-com">// back to identity (fully zoomed out)</span>
+  <span class="tok-fn">isPanZoomEnabled</span>(): <span class="tok-typ">boolean</span>;
+}</code></pre>
+    <pre><code><span class="tok-key">const</span> chart = <span class="tok-key">new</span> <span class="tok-fn">LineChart</span>(host, { data, panZoom: { enabled: <span class="tok-key">true</span> } });
+
+chart.<span class="tok-fn">zoomTo</span>(<span class="tok-num">4</span>);              <span class="tok-com">// zoom 4× about the plot center</span>
+chart.<span class="tok-fn">panTo</span>(<span class="tok-num">0.75</span>, <span class="tok-num">0</span>);       <span class="tok-com">// scroll to the last quarter of the data</span>
+chart.<span class="tok-fn">zoomBy</span>(<span class="tok-num">1.4</span>, <span class="tok-num">1</span>, <span class="tok-num">0.5</span>);   <span class="tok-com">// zoom in about the right edge</span>
+chart.<span class="tok-fn">resetView</span>();           <span class="tok-com">// fully zoom out</span></code></pre>
+    <div class="note">The same interface backs the on-chart buttons and the drag / wheel handlers, so UI,
+      pointer input and code all share one clamped source of truth. The <code>PanZoomController</code>
+      and <code>ZoomControls</code> classes are exported too if you're building a custom visual.</div>
+
     <h2 id="exports">What's exported</h2>
     <p>From <code>@smalldat/visual</code>:</p>
     <ul>
@@ -172,6 +236,7 @@
       <li><strong>Data:</strong> <code>fromRows</code>, <code>patchPoints</code>, <code>appendPoints</code>, <code>removePoints</code>, <code>seriesKeys</code>, <code>validate</code>, <code>inferType</code>, <code>resolveTypes</code>, <code>toNumeric</code>, <code>DataError</code> (+ <code>DataSet</code>, <code>Point</code>, <code>Scalar</code>, <code>FieldType</code>, <code>PointPatch</code>, <code>PointRef</code> types).</li>
       <li><strong>Scales:</strong> <code>LinearScale</code>, <code>TimeScale</code>, <code>BandScale</code>, <code>makeScale</code>.</li>
       <li><strong>Color:</strong> <code>DEFAULT_PALETTE</code>, <code>parseColor</code>, <code>cssRGBA</code>.</li>
+      <li><strong>Pan &amp; zoom:</strong> <code>PanZoomController</code>, <code>ZoomControls</code>, <code>resolvePanZoom</code>, <code>IDENTITY_VIEW</code> (+ <code>PanZoomable</code>, <code>PanZoomConfig</code>, <code>ViewTransform</code>, <code>ZoomCorner</code> types).</li>
       <li><strong>Rendering &amp; particles (advanced / custom visuals):</strong> <code>pickRenderer</code>, <code>allocGrains</code>, <code>packBars</code>, <code>packLine</code>, <code>grainCounts</code>, <code>scatterStarts</code>, <code>evalGrain</code>, <code>ease</code>, and their types.</li>
     </ul>
 

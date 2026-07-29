@@ -12,6 +12,14 @@ export interface GrainBuffer {
   startY: Float32Array;
   targetX: Float32Array;
   targetY: Float32Array;
+  /**
+   * Per-grain scatter offset from its "ideal" target (grid-cell center for bars,
+   * path centerline for lines) — the jitter/ribbon component of `target`. Kept
+   * separate so renderers can shrink it by the view scale, keeping the sand's
+   * on-screen spread constant under zoom. Zero for grains with no scatter.
+   */
+  offX: Float32Array;
+  offY: Float32Array;
   /** Animation start delay per grain, seconds. */
   delay: Float32Array;
   /** Per-grain random seed in [0,1) for shader-side jitter. */
@@ -29,6 +37,8 @@ export function allocGrains(count: number): GrainBuffer {
     startY: new Float32Array(count),
     targetX: new Float32Array(count),
     targetY: new Float32Array(count),
+    offX: new Float32Array(count),
+    offY: new Float32Array(count),
     delay: new Float32Array(count),
     seed: new Float32Array(count),
     colorIdx: new Uint16Array(count),

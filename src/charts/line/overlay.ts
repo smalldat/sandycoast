@@ -44,6 +44,11 @@ export interface OverlayState {
   hoverWeights: Float32Array;
   /** Color multiplier for a fully-hovered series (1 = highlight effect off). */
   highlightGain: number;
+  /** Pan/zoom transform applied to layout coords (default identity). */
+  viewScale?: [number, number];
+  viewOffset?: [number, number];
+  /** Clip plot-interior chrome (line/grid/ticks) to the plot rect (pan/zoom). */
+  clipToPlot?: boolean;
 }
 
 /** `cssRGBA` with an rgb gain (channels multiplied, then clamped) baked in. */
@@ -95,12 +100,20 @@ export class Overlay {
     const bottomPx = (1 - y0) * H; // layout y=0
     const topPx = (1 - y1) * H; // layout y=1
 
-    // layout (lx,ly) -> device px
-    const dx = (lx: number): number => (x0 + lx * (x1 - x0)) * W;
-    const dy = (ly: number): number => (1 - (y0 + ly * (y1 - y0))) * H;
+    // Pan/zoom transform, then layout (lx,ly) -> device px.
+    const vsx = s.viewScale?.[0] ?? 1;
+    const vsy = s.viewScale?.[1] ?? 1;
+    const vox = s.viewOffset?.[0] ?? 0;
+    const voy = s.viewOffset?.[1] ?? 0;
+    const dx = (lx: number): number => (x0 + (lx * vsx + vox) * (x1 - x0)) * W;
+    const dy = (ly: number): number => (1 - (y0 + (ly * vsy + voy) * (y1 - y0))) * H;
 
     // Solid line/fill first, so axes/ticks/current-value sit above it.
-    if (s.lineStyle.enabled && s.solid > 0) this.drawSeries(s, dx, dy, dpr);
+    if (s.lineStyle.enabled && s.solid > 0) {
+      this.clip(s.clipToPlot, leftPx, topPx, rightPx - leftPx, bottomPx - topPx, () =>
+        this.drawSeries(s, dx, dy, dpr),
+      );
+    }
     if (!s.chrome.any) return;
 
     this.drawYAxis(s, leftPx, rightPx, topPx, bottomPx, dy, dpr);
@@ -108,6 +121,28 @@ export class Overlay {
     if (s.chrome.currentValue.show && s.hoveredPoint) {
       this.drawCurrentValue(s, leftPx, rightPx, topPx, bottomPx, dx, dy, dpr);
     }
+  }
+
+  /** Run `fn` with the canvas clipped to `[x,y,w,h]` when `on`; else run as-is. */
+  private clip(
+    on: boolean | undefined,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    fn: () => void,
+  ): void {
+    if (!on) {
+      fn();
+      return;
+    }
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    fn();
+    ctx.restore();
   }
 
   /**
@@ -199,25 +234,29 @@ export class Overlay {
     ctx.stroke();
 
     let maxLabelW = 0;
-    for (const t of s.axes.y) {
-      const py = dy(t.pos);
-      if (cfg.gridLines) {
-        ctx.save();
-        ctx.globalAlpha = 0.4;
+    // Under pan/zoom, ticks slide along the axis: clip the band vertically so
+    // ticks/labels/grid that scroll past the plot's top/bottom are hidden.
+    this.clip(s.clipToPlot, 0, topPx, rightPx, bottomPx - topPx, () => {
+      for (const t of s.axes.y) {
+        const py = dy(t.pos);
+        if (cfg.gridLines) {
+          ctx.save();
+          ctx.globalAlpha = 0.4;
+          ctx.beginPath();
+          ctx.moveTo(leftPx, py);
+          ctx.lineTo(rightPx, py);
+          ctx.stroke();
+          ctx.restore();
+        }
         ctx.beginPath();
-        ctx.moveTo(leftPx, py);
-        ctx.lineTo(rightPx, py);
+        ctx.moveTo(leftPx - tick, py);
+        ctx.lineTo(leftPx, py);
         ctx.stroke();
-        ctx.restore();
+        ctx.fillText(t.label, leftPx - tick - 4 * dpr, py);
+        const w = ctx.measureText(t.label).width;
+        if (w > maxLabelW) maxLabelW = w;
       }
-      ctx.beginPath();
-      ctx.moveTo(leftPx - tick, py);
-      ctx.lineTo(leftPx, py);
-      ctx.stroke();
-      ctx.fillText(t.label, leftPx - tick - 4 * dpr, py);
-      const w = ctx.measureText(t.label).width;
-      if (w > maxLabelW) maxLabelW = w;
-    }
+    });
 
     if (cfg.label) {
       const titleX = leftPx - tick - 4 * dpr - maxLabelW - 6 * dpr - (cfg.fontPx * dpr) / 2;
@@ -264,23 +303,27 @@ export class Overlay {
     ctx.lineTo(rightPx, bottomPx);
     ctx.stroke();
 
-    for (const t of s.axes.x) {
-      const px = dx(t.pos);
-      if (cfg.gridLines) {
-        ctx.save();
-        ctx.globalAlpha = 0.4;
+    // Clip the band horizontally so X ticks/labels/grid that scroll past the
+    // plot's left/right edges are hidden under pan/zoom.
+    this.clip(s.clipToPlot, leftPx, 0, rightPx - leftPx, s.deviceH, () => {
+      for (const t of s.axes.x) {
+        const px = dx(t.pos);
+        if (cfg.gridLines) {
+          ctx.save();
+          ctx.globalAlpha = 0.4;
+          ctx.beginPath();
+          ctx.moveTo(px, bottomPx);
+          ctx.lineTo(px, gridTop);
+          ctx.stroke();
+          ctx.restore();
+        }
         ctx.beginPath();
         ctx.moveTo(px, bottomPx);
-        ctx.lineTo(px, gridTop);
+        ctx.lineTo(px, bottomPx + tick);
         ctx.stroke();
-        ctx.restore();
+        ctx.fillText(t.label, px, bottomPx + tick + 3 * dpr);
       }
-      ctx.beginPath();
-      ctx.moveTo(px, bottomPx);
-      ctx.lineTo(px, bottomPx + tick);
-      ctx.stroke();
-      ctx.fillText(t.label, px, bottomPx + tick + 3 * dpr);
-    }
+    });
 
     if (cfg.label) {
       ctx.textBaseline = 'top';

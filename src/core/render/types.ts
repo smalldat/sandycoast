@@ -48,6 +48,18 @@ export interface FrameUniforms {
    * Gutters here make room for axes/labels/legend drawn on the overlay.
    */
   plotRect: [number, number, number, number];
+  /**
+   * Pan/zoom transform applied to layout coords before the plot mapping:
+   * `p' = p * viewScale + viewOffset`. Default `[1,1]` / `[0,0]` (identity).
+   */
+  viewScale?: [number, number];
+  viewOffset?: [number, number];
+  /**
+   * Clip grains to the plot rect (scissor). Enabled with pan/zoom so panned
+   * content never spills into the axis/legend gutters. Default `false` so the
+   * pour-in from above the plot stays visible when pan/zoom is off.
+   */
+  clipToPlot?: boolean;
 }
 
 export type BackendKind = 'webgpu' | 'webgl2' | 'canvas2d';

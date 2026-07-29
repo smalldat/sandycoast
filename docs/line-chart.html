@@ -52,6 +52,7 @@
       <a href="#animation">animation</a>
       <a href="#line">line (line + fill)</a>
       <a href="#shared">Shared blocks</a>
+      <a href="data-model.html#panzoom">panZoom</a>
       <a href="#methods">Methods</a>
       <a href="#events">Events</a>
       <a href="#examples">Examples</a>
@@ -82,6 +83,7 @@
         <tr><td><code>currentValue</code></td><td class="type">object</td><td class="def">off</td><td><a href="bar-chart.html#currentvalue">Same as bar chart</a>.</td></tr>
         <tr><td><code>line</code></td><td class="type">LineStyleConfig</td><td class="def">off</td><td>Solid line + area fill. <a href="#line">See below</a>.</td></tr>
         <tr><td><code>fps</code></td><td class="type">FpsConfig</td><td class="def">off</td><td><a href="bar-chart.html#fps">Same as bar chart</a>.</td></tr>
+        <tr><td><code>panZoom</code></td><td class="type">PanZoomConfig</td><td class="def">off</td><td>Drag to pan, wheel/UI to zoom. <a href="data-model.html#panzoom">Shared pan &amp; zoom</a>.</td></tr>
         <tr><td><code>backend</code></td><td class="type">'auto' | 'webgpu' | 'webgl2' | 'canvas2d'</td><td class="def">'auto'</td><td>Force a rendering backend.</td></tr>
       </tbody>
     </table>
@@ -167,6 +169,10 @@
       <code>on('hover', fn)</code>, <code>update(data | patches)</code>, <code>add(points)</code>,
       <code>remove(refs)</code>, <code>repour()</code>, <code>getData()</code>, <code>dispose()</code>.
       See <a href="bar-chart.html#methods">bar chart → Methods</a>.</p>
+    <p>It also implements the shared <a href="data-model.html#panzoom"><code>PanZoomable</code></a>
+      interface: <code>getView()</code>, <code>setView(v)</code>, <code>panBy()</code>,
+      <code>panTo()</code>, <code>zoomBy()</code>, <code>zoomTo()</code>, <code>resetView()</code>,
+      <code>isPanZoomEnabled()</code>.</p>
 
     <h2 id="events">Events</h2>
     <p>The <code>hover</code> event carries <code>{ point: LineMeta | null }</code> — note it's

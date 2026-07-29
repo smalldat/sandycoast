@@ -2,6 +2,7 @@ import type { DataSet, Scalar } from '../../core/data/types.js';
 import type { Easing } from '../../core/particles/anim.js';
 import type { BackendPreference } from '../../core/render/pick.js';
 import type { GrainShape, RGBA } from '../../core/render/types.js';
+import type { PanZoomConfig } from '../../core/view/types.js';
 // Chrome config is identical to the bar chart's — the line chart reuses the
 // exact same axis / legend / current-value / fps / hover interfaces.
 import type {
@@ -156,6 +157,8 @@ export interface LineChartConfig {
   line?: LineStyleConfig;
   /** On-screen FPS meter; off by default. */
   fps?: FpsConfig;
+  /** Pan & zoom (drag to pan, wheel/UI to zoom); off by default. */
+  panZoom?: PanZoomConfig;
   /** Force a rendering backend; default 'auto' (WebGPU → Canvas2D). */
   backend?: BackendPreference;
 }

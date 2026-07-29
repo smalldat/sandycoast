@@ -13,6 +13,8 @@ struct Uniforms {
   plot : vec4<f32>,
   // hoverOpacity (<0 = disabled), reserved, reserved, reserved
   d : vec4<f32>,
+  // pan/zoom: scaleX, scaleY, offsetX, offsetY (layout space)
+  view : vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> U : Uniforms;
@@ -40,6 +42,7 @@ fn vs(
   @location(2) dst : vec2<f32>,
   @location(3) md : vec2<f32>,       // delay, seed
   @location(4) ids : vec2<f32>,      // colorIdx, barId
+  @location(5) off : vec2<f32>,      // scatter offset (jitter/ribbon component)
 ) -> VsOut {
   let now = U.a.x;
   let duration = U.a.y;
@@ -53,7 +56,11 @@ fn vs(
   let te = easeApply(t, easingKind);
   let settle = 1.0 - te;
 
-  var p = mix(start, dst, te);
+  // Shrink the baked scatter offset by the view scale so the sand's on-screen
+  // spread stays constant under zoom (the offset is ×U.view.xy below). No-op at
+  // identity zoom (view = 1).
+  let comp = dst - off * (1.0 - 1.0 / U.view.xy);
+  var p = mix(start, comp, te);
 
   // Settle wobble that fades as the grain arrives.
   let baseAmp = U.c.z;
@@ -61,14 +68,17 @@ fn vs(
   p.y += cos((now + seed * 6.283) * 3.3 + seed * 55.0) * baseAmp * settle;
 
   // Hover jitter: extra motion scaled by the (smoothly eased) hover weight.
+  // Divide by the view scale so the on-screen amplitude stays constant under
+  // zoom (the layout-space offset is multiplied by U.view.xy just below).
   let hAmp = U.c.y * hw;
-  p.x += sin(now * 9.0 + seed * 220.0) * hAmp;
-  p.y += cos(now * 8.3 + seed * 190.0) * hAmp;
+  p.x += sin(now * 9.0 + seed * 220.0) * hAmp / U.view.x;
+  p.y += cos(now * 8.3 + seed * 190.0) * hAmp / U.view.y;
 
-  // Layout [0,1] (y up) -> plot rect -> clip space.
+  // Pan/zoom in layout space, then Layout [0,1] (y up) -> plot rect -> clip.
+  let pv = p * U.view.xy + U.view.zw;
   let plotOrigin = U.plot.xy;
   let plotSize = U.plot.zw - U.plot.xy;
-  let inPlot = plotOrigin + p * plotSize;
+  let inPlot = plotOrigin + pv * plotSize;
   let clip = vec2<f32>(inPlot.x * 2.0 - 1.0, inPlot.y * 2.0 - 1.0);
   // Corner offset in device px -> clip.
   let offset = corner * (grainPx / viewport) ;
