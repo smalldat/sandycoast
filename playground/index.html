@@ -12,8 +12,17 @@
         display: grid; grid-template-columns: 180px 1fr; grid-template-rows: auto 1fr auto;
         grid-template-areas: "head head" "nav main" "panel panel"; height: 100vh;
       }
-      header { grid-area: head; padding: 12px 20px; border-bottom: 1px solid #1e2430; }
+      header {
+        grid-area: head; padding: 12px 20px; border-bottom: 1px solid #1e2430;
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      }
       h1 { font-size: 15px; margin: 0; font-weight: 600; }
+      .head-links { display: flex; gap: 8px; font-size: 13px; }
+      .head-links a {
+        color: #cdd3de; text-decoration: none; border: 1px solid #2a3242;
+        border-radius: 6px; padding: 5px 12px; background: #1b2230;
+      }
+      .head-links a:hover { background: #232c3d; }
 
       /* Left component nav */
       #nav { grid-area: nav; border-right: 1px solid #1e2430; padding: 12px 8px; overflow-y: auto; }
@@ -76,7 +85,13 @@
     </style>
   </head>
   <body>
-    <header><h1>smalldat SandyCoast — demo</h1></header>
+    <header>
+      <h1>smalldat SandyCoast — demo</h1>
+      <nav class="head-links">
+        <a href="https://github.com/smalldat/sandycoast" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://www.npmjs.com/package/@smalldat/visual" target="_blank" rel="noopener">npm</a>
+      </nav>
+    </header>
     <nav id="nav"></nav>
     <main id="host"></main>
     <aside id="panel"></aside>

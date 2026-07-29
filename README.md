@@ -4,6 +4,11 @@ High-performance visual components rendered as **points/sand** — no SVG.
 First component: a sand bar chart where thousands of grains pour in and settle
 into bars. WebGPU-first, Canvas2D fallback.
 
+### ▶ Live demo: **[sandycoast.smalldat.com](https://sandycoast.smalldat.com/)**
+
+Interactive playground — tweak grain density, animation, bars, and live data in
+the browser. No install needed.
+
 **Docs:** full property reference and examples live at the
 [documentation site](https://smalldat.github.io/sandycoast/) (a static
 GitHub Pages site). **License:** dual-licensed — free for non-commercial use, paid
