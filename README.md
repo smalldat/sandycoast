@@ -139,6 +139,12 @@ Static docs (no build step) are served from [GitHub Pages](https://smalldat.gith
 `main`, folder `/docs` → Save. A `.nojekyll` file is included so the HTML is
 served as-is. (This is independent of the Vite/Firebase playground deploy.)
 
+## Requests & contact
+
+Want a new chart type or a special/custom visual? Open a
+[GitHub issue](https://github.com/smalldat/sandycoast/issues) or email
+<office-dat@smalldat.com>.
+
 ## License
 
 Dual-licensed:
