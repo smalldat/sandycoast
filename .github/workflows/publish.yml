@@ -48,6 +48,11 @@ jobs:
       - name: Test
         run: npm test
 
+      # Auto-bump patch past the highest already on npm (major.minor from
+      # package.json). Working-tree only — nothing is committed back.
+      - name: Compute next version
+        run: echo "Publishing $(node scripts/ci-version.mjs)"
+
       - name: Build package
         run: npm run build
 
