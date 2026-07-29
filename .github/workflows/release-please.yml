@@ -7,7 +7,7 @@ name: Release Please
 
 on:
   push:
-    branches: [main]
+    branches: [release]
 
 permissions:
   contents: write # create tags, releases, and the release PR's commits
