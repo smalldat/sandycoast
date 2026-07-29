@@ -2,6 +2,7 @@ import type { DataSet, Scalar } from '../../core/data/types.js';
 import type { Easing } from '../../core/particles/anim.js';
 import type { BackendPreference } from '../../core/render/pick.js';
 import type { GrainShape, RGBA } from '../../core/render/types.js';
+import type { PanZoomConfig } from '../../core/view/types.js';
 
 export type HoverEffect = 'highlight' | 'jitter' | 'opacity';
 
@@ -209,6 +210,8 @@ export interface BarChartConfig {
   bars?: BarStyleConfig;
   /** On-screen FPS meter; off by default. */
   fps?: FpsConfig;
+  /** Pan & zoom (drag to pan, wheel/UI to zoom); off by default. */
+  panZoom?: PanZoomConfig;
   /** Force a rendering backend; default 'auto' (WebGPU → Canvas2D). */
   backend?: BackendPreference;
 }

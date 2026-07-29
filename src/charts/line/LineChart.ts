@@ -8,6 +8,14 @@ import { pickRenderer } from '../../core/render/pick.js';
 import type { FrameUniforms, RGBA, Renderer } from '../../core/render/types.js';
 import { DEFAULT_PALETTE, parseColor } from '../../core/util/color.js';
 import { Emitter } from '../../core/util/emitter.js';
+import { PanZoomController } from '../../core/view/controller.js';
+import { ZoomControls } from '../../core/view/controls.js';
+import {
+  type PanZoomable,
+  type ResolvedPanZoom,
+  type ViewTransform,
+  resolvePanZoom,
+} from '../../core/view/types.js';
 // Reuse the bar chart's chrome infrastructure verbatim (axes/legend/margins/fps).
 import { axisMargins, marginsToPlotRect, resolveChrome } from '../bar/chrome.js';
 import type { ResolvedChrome } from '../bar/chrome.js';
@@ -127,7 +135,7 @@ function clamp01(v: number): number {
  * config surface and lifecycle, with a line style (`none`/`straight`/`spline`)
  * in place of the bar border.
  */
-export class LineChart {
+export class LineChart implements PanZoomable {
   private el: HTMLElement;
   private canvas: HTMLCanvasElement;
   private cfg: Resolved;
@@ -152,6 +160,9 @@ export class LineChart {
   private legend: Legend | null = null;
   private fpsCfg: ResolvedFps;
   private fps: FpsMeter | null = null;
+  private pzCfg: ResolvedPanZoom;
+  private pz: PanZoomController;
+  private zoomControls: ZoomControls | null = null;
   private layout: LineLayout | null = null;
   private axes: AxisModel = { x: [], y: [] };
   private plotRect: [number, number, number, number] = [0, 0, 1, 1];
@@ -177,6 +188,12 @@ export class LineChart {
     this.chrome = resolveChrome(config);
     this.lineStyle = resolveLineStyle(config);
     this.fpsCfg = resolveFps(config);
+    this.pzCfg = resolvePanZoom(config.panZoom);
+    this.pz = new PanZoomController(
+      this.pzCfg,
+      () => this.plotRect,
+      () => this.onViewChange(),
+    );
     this.canvas = document.createElement('canvas');
     this.canvas.style.width = '100%';
     this.canvas.style.height = '100%';
@@ -188,8 +205,20 @@ export class LineChart {
       this.ensureRelative();
       this.fps = new FpsMeter(this.el, this.fpsCfg.position, this.fpsCfg.color);
     }
+    if (this.pzCfg.enabled) {
+      this.ensureRelative();
+      this.pz.attach(this.canvas);
+      if (this.pzCfg.controls.show) {
+        this.zoomControls = new ZoomControls(this.el, this, this.pzCfg.controls);
+      }
+    }
 
     this.ready = this.boot(config.data, config.backend);
+  }
+
+  /** View moved (drag/wheel/programmatic): redraw chrome; grains follow via uniforms. */
+  private onViewChange(): void {
+    this.drawOverlay();
   }
 
   private ensureRelative(): void {
@@ -278,6 +307,7 @@ export class LineChart {
   private recomputePlotRect(): void {
     if (!this.chrome.any) {
       this.plotRect = [0, 0, 1, 1];
+      this.positionZoomControls();
       return;
     }
     const m = axisMargins(this.chrome);
@@ -285,6 +315,33 @@ export class LineChart {
       m[this.chrome.legend.position] += this.legend.measure() + 6;
     }
     this.plotRect = marginsToPlotRect(m, this.canvas.width, this.canvas.height, this.dpr);
+    this.positionZoomControls();
+  }
+
+  /**
+   * Anchor the zoom controls to their plot corner (inside axes/legend), nudged
+   * clear of the FPS meter, so legend / FPS / zoom controls never overlap.
+   */
+  private positionZoomControls(): void {
+    if (!this.zoomControls) return;
+    const rect = this.el.getBoundingClientRect();
+    const cssW = rect.width || 1;
+    const cssH = rect.height || 1;
+    const [x0, y0, x1, y1] = this.plotRect;
+    const pad = 6;
+    const pos = this.pzCfg.controls.position;
+    let vInset = (pos.startsWith('top') ? (1 - y1) * cssH : y0 * cssH) + pad;
+    const hInset = (pos.endsWith('left') ? x0 * cssW : (1 - x1) * cssW) + pad;
+    if (this.fpsCfg.show && pos.startsWith('top')) {
+      const fpsCorner =
+        this.fpsCfg.position === 'left'
+          ? 'top-left'
+          : this.fpsCfg.position === 'right'
+            ? 'top-right'
+            : null;
+      if (fpsCorner === pos) vInset += 30;
+    }
+    this.zoomControls.setInset(vInset, hInset);
   }
 
   private drawOverlay(now = this.nowSeconds()): void {
@@ -307,7 +364,15 @@ export class LineChart {
       solid,
       hoverWeights: this.hoverWeights,
       highlightGain: this.cfg.hoverEffects.has('highlight') ? this.cfg.highlightGain : 1,
+      viewScale: this.view.scale,
+      viewOffset: this.view.offset,
+      clipToPlot: this.pzCfg.enabled,
     });
+  }
+
+  /** Current pan/zoom transform. */
+  private get view(): ViewTransform {
+    return this.pz.getView();
   }
 
   /**
@@ -618,6 +683,32 @@ export class LineChart {
     return { ...this.data, points: this.data.points.map((p) => ({ ...p })) };
   }
 
+  // --- PanZoomable: programmatic pan & zoom (see {@link PanZoomable}) --------
+  getView(): ViewTransform {
+    return this.pz.getView();
+  }
+  setView(view: Partial<ViewTransform>): void {
+    this.pz.setView(view);
+  }
+  panBy(dx: number, dy: number): void {
+    this.pz.panBy(dx, dy);
+  }
+  panTo(x: number, y: number): void {
+    this.pz.panTo(x, y);
+  }
+  zoomBy(factor: number, cx?: number, cy?: number): void {
+    this.pz.zoomBy(factor, cx, cy);
+  }
+  zoomTo(scale: number, cx?: number, cy?: number): void {
+    this.pz.zoomTo(scale, cx, cy);
+  }
+  resetView(): void {
+    this.pz.resetView();
+  }
+  isPanZoomEnabled(): boolean {
+    return this.pzCfg.enabled;
+  }
+
   private loop = (): void => {
     if (this.disposed || !this.renderer) return;
     const nowMs = performance.now();
@@ -675,6 +766,9 @@ export class LineChart {
       background: this.cfg.background,
       plotRect: this.plotRect,
       grainFade: this.revealState(now).grainFade,
+      viewScale: this.view.scale,
+      viewOffset: this.view.offset,
+      clipToPlot: this.pzCfg.enabled,
     };
   }
 
@@ -683,8 +777,12 @@ export class LineChart {
     const cx = (e.clientX - rect.left) / rect.width;
     const cy = 1 - (e.clientY - rect.top) / rect.height;
     const [x0, y0, x1, y1] = this.plotRect;
-    const lx = (cx - x0) / (x1 - x0);
-    const ly = (cy - y0) / (y1 - y0);
+    // Plot-local fraction, then invert the pan/zoom transform into data space.
+    const plx = (cx - x0) / (x1 - x0);
+    const ply = (cy - y0) / (y1 - y0);
+    const v = this.view;
+    const lx = (plx - v.offset[0]) / v.scale[0];
+    const ly = (ply - v.offset[1]) / v.scale[1];
     const hit = this.hitTest(lx, ly);
     const id = hit?.pointId ?? -1;
     this.pointerPx = {
@@ -733,10 +831,12 @@ export class LineChart {
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
     this.ro?.disconnect();
+    this.pz.detach();
     this.renderer?.dispose();
     this.emitter.clear();
     this.legend?.dispose();
     this.fps?.dispose();
+    this.zoomControls?.dispose();
     this.overlayCanvas?.remove();
     this.canvas.remove();
   }

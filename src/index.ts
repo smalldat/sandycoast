@@ -87,5 +87,19 @@ export type {
   PackTarget,
 } from './core/particles/pack.js';
 
+// Pan & zoom (shared abstraction across all visuals)
+export { PanZoomController } from './core/view/controller.js';
+export { ZoomControls } from './core/view/controls.js';
+export {
+  IDENTITY_VIEW,
+  type PanZoomable,
+  type PanZoomConfig,
+  type PanZoomControlsConfig,
+  resolvePanZoom,
+  type ResolvedPanZoom,
+  type ViewTransform,
+  type ZoomCorner,
+} from './core/view/types.js';
+
 // Utils
 export { cssRGBA, DEFAULT_PALETTE, parseColor } from './core/util/color.js';

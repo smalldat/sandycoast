@@ -71,6 +71,16 @@ function defaultConfig(): Cfg {
     },
     // On-screen FPS meter; 'off' hides it. Position pins it to an edge/corner.
     fps: { position: 'off', color: '#cdd3de' },
+    // Pan & zoom: drag to pan, wheel/UI to zoom. Off by default.
+    panZoom: {
+      enabled: false,
+      axes: 'both',
+      minZoom: 1,
+      maxZoom: 10,
+      wheel: true,
+      drag: true,
+      controls: { show: true, position: 'top-right', step: 1.4 },
+    },
   };
 }
 
@@ -306,24 +316,44 @@ const GROUPS: ControlGroup[] = [
     ],
   },
   {
-    title: 'Legend',
+    title: 'Pan, Zoom, Legend',
     controls: [
-      { kind: 'checkbox', label: 'Show', path: 'legend.show' },
+      { kind: 'checkbox', label: 'Pan/zoom enabled', path: 'panZoom.enabled' },
       {
         kind: 'select',
-        label: 'Position',
+        label: 'Pan/zoom axes',
+        path: 'panZoom.axes',
+        options: (['both', 'x', 'y'] as const).map((v) => ({ value: v, label: v })),
+      },
+      { kind: 'slider', label: 'Max zoom', path: 'panZoom.maxZoom', min: 1, max: 40, step: 1 },
+      { kind: 'checkbox', label: 'Wheel zoom', path: 'panZoom.wheel' },
+      { kind: 'checkbox', label: 'Drag pan', path: 'panZoom.drag' },
+      { kind: 'checkbox', label: 'Zoom controls', path: 'panZoom.controls.show' },
+      {
+        kind: 'select',
+        label: 'Controls corner',
+        path: 'panZoom.controls.position',
+        options: (['top-right', 'top-left', 'bottom-right', 'bottom-left'] as const).map((v) => ({
+          value: v,
+          label: v,
+        })),
+      },
+      { kind: 'checkbox', label: 'Legend show', path: 'legend.show' },
+      {
+        kind: 'select',
+        label: 'Legend position',
         path: 'legend.position',
         options: (['bottom', 'top', 'left', 'right'] as const).map((v) => ({ value: v, label: v })),
       },
       {
         kind: 'select',
-        label: 'Align',
+        label: 'Legend align',
         path: 'legend.align',
         options: (['start', 'center', 'end'] as const).map((v) => ({ value: v, label: v })),
       },
       {
         kind: 'select',
-        label: 'Swatch',
+        label: 'Legend swatch',
         path: 'legend.swatch',
         options: [
           { value: 'disc', label: 'disc' },

@@ -51,6 +51,7 @@
       <a href="#currentvalue">currentValue</a>
       <a href="#bars">bars (fill + border)</a>
       <a href="#fps">fps</a>
+      <a href="#panzoom">panZoom</a>
       <a href="#methods">Methods</a>
       <a href="#events">Events</a>
       <a href="#examples">Examples</a>
@@ -92,6 +93,8 @@
           <td>Solid fill + border that resolves as sand fades. <a href="#bars">See below</a>.</td></tr>
         <tr><td><code>fps</code></td><td class="type">FpsConfig</td><td class="def">off</td>
           <td>On-screen FPS meter. <a href="#fps">See below</a>.</td></tr>
+        <tr><td><code>panZoom</code></td><td class="type">PanZoomConfig</td><td class="def">off</td>
+          <td>Drag to pan, wheel/UI to zoom. <a href="#panzoom">See below</a>.</td></tr>
         <tr><td><code>backend</code></td><td class="type">'auto' | 'webgpu' | 'webgl2' | 'canvas2d'</td><td class="def">'auto'</td>
           <td>Force a rendering backend. <code>'auto'</code> prefers WebGPU, falls back to Canvas2D.</td></tr>
       </tbody>
@@ -221,6 +224,26 @@
       </tbody>
     </table>
 
+    <h2 id="panzoom"><code>panZoom</code> — <span class="type" style="font-size:15px">PanZoomConfig</span></h2>
+    <p>Drag to pan, wheel / on-chart buttons to zoom, or drive it from code via the
+      <a href="data-model.html#panzoom">shared <code>PanZoomable</code> interface</a> — one transform
+      moves the grains and all chrome together. Off by default.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>enabled</code></td><td class="type">boolean</td><td class="def">false</td><td>Master switch for drag / wheel / UI pan &amp; zoom.</td></tr>
+        <tr><td><code>axes</code></td><td class="type">'x' | 'y' | 'both'</td><td class="def">'both'</td><td>Restrict pan/zoom to one axis.</td></tr>
+        <tr><td><code>minZoom</code> / <code>maxZoom</code></td><td class="type">number</td><td class="def">1 / 10</td><td>Zoom clamp; <code>minZoom: 1</code> keeps the data filling the plot.</td></tr>
+        <tr><td><code>wheel</code> / <code>drag</code></td><td class="type">boolean</td><td class="def">true</td><td>Enable wheel zoom / drag pan input.</td></tr>
+        <tr><td><code>controls</code></td><td class="type">{ show, position, step }</td><td class="def">shown</td><td>On-chart <code>+</code>/<code>−</code>/reset buttons; <code>position</code> is a corner (<code>'top-right'</code> default), anchored inside the plot and kept clear of the legend and FPS meter.</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">BarChart</span>(el, {
+  data,
+  panZoom: { enabled: <span class="tok-key">true</span>, axes: <span class="tok-str">'x'</span>, maxZoom: <span class="tok-num">20</span>,
+    controls: { position: <span class="tok-str">'top-right'</span> } },
+});</code></pre>
+
     <h2 id="methods">Methods</h2>
     <table class="prop-table">
       <thead><tr><th>Method</th><th>Description</th></tr></thead>
@@ -233,6 +256,10 @@
         <tr><td><code>remove(refs)</code></td><td>Remove points by index (negative = from end) or <code>{ x, z? }</code> match; bars reflow.</td></tr>
         <tr><td><code>repour()</code></td><td>Re-run the pour-in animation with the current data (no morph).</td></tr>
         <tr><td><code>getData(): DataSet</code></td><td>Deep-cloned snapshot of the current dataset.</td></tr>
+        <tr><td><code>getView()</code> / <code>setView(v)</code></td><td>Read / set the pan/zoom transform <code>{ scale:[sx,sy], offset:[ox,oy] }</code> (clamped).</td></tr>
+        <tr><td><code>panBy(dx,dy)</code> / <code>panTo(x,y)</code></td><td>Pan by a plot-local delta / to a data fraction. See <a href="data-model.html#panzoom">PanZoomable</a>.</td></tr>
+        <tr><td><code>zoomBy(f,cx?,cy?)</code> / <code>zoomTo(s,cx?,cy?)</code></td><td>Zoom by a factor / to an absolute scale, about a plot-local anchor (default center).</td></tr>
+        <tr><td><code>resetView()</code> / <code>isPanZoomEnabled()</code></td><td>Return to the identity view / query whether pan/zoom is on.</td></tr>
         <tr><td><code>dispose()</code></td><td>Cancel the loop, remove listeners, free the backend and DOM. Call on teardown.</td></tr>
       </tbody>
     </table>

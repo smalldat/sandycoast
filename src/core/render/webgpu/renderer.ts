@@ -28,7 +28,7 @@ export class WebGPURenderer implements Renderer {
   private bindGroup: GPUBindGroup | null = null;
   private bindLayout!: GPUBindGroupLayout;
   private grainCount = 0;
-  private uniformData = new Float32Array(24); // 6 vec4
+  private uniformData = new Float32Array(28); // 7 vec4
 
   static async isSupported(): Promise<boolean> {
     if (!('gpu' in navigator)) return false;
@@ -84,15 +84,17 @@ export class WebGPURenderer implements Renderer {
             stepMode: 'vertex',
             attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }],
           },
-          // per-instance grain: sx,sy,tx,ty,delay,seed,colorIdx,barId (8 floats)
+          // per-instance grain: sx,sy,tx,ty,delay,seed,colorIdx,barId,offX,offY
+          // (10 floats)
           {
-            arrayStride: 32,
+            arrayStride: 40,
             stepMode: 'instance',
             attributes: [
               { shaderLocation: 1, offset: 0, format: 'float32x2' },
               { shaderLocation: 2, offset: 8, format: 'float32x2' },
               { shaderLocation: 3, offset: 16, format: 'float32x2' },
               { shaderLocation: 4, offset: 24, format: 'float32x2' },
+              { shaderLocation: 5, offset: 32, format: 'float32x2' },
             ],
           },
         ],
@@ -127,9 +129,9 @@ export class WebGPURenderer implements Renderer {
 
   upload(grains: GrainBuffer): void {
     this.grainCount = grains.count;
-    const inst = new Float32Array(grains.count * 8);
+    const inst = new Float32Array(grains.count * 10);
     for (let i = 0; i < grains.count; i++) {
-      const o = i * 8;
+      const o = i * 10;
       inst[o] = grains.startX[i]!;
       inst[o + 1] = grains.startY[i]!;
       inst[o + 2] = grains.targetX[i]!;
@@ -138,6 +140,8 @@ export class WebGPURenderer implements Renderer {
       inst[o + 5] = grains.seed[i]!;
       inst[o + 6] = grains.colorIdx[i]!;
       inst[o + 7] = grains.barId[i]!;
+      inst[o + 8] = grains.offX[i]!;
+      inst[o + 9] = grains.offY[i]!;
     }
     this.instBuf?.destroy();
     this.instBuf = this.device.createBuffer({
@@ -219,6 +223,10 @@ export class WebGPURenderer implements Renderer {
     d[21] = 0;
     d[22] = 0;
     d[23] = 0;
+    d[24] = u.viewScale?.[0] ?? 1;
+    d[25] = u.viewScale?.[1] ?? 1;
+    d[26] = u.viewOffset?.[0] ?? 0;
+    d[27] = u.viewOffset?.[1] ?? 0;
     this.device.queue.writeBuffer(this.uniformBuf, 0, d);
 
     const encoder = this.device.createCommandEncoder();
@@ -238,6 +246,17 @@ export class WebGPURenderer implements Renderer {
       ],
     });
     pass.setPipeline(this.pipeline);
+    // Scissor grains to the plot rect so panned/zoomed content never spills into
+    // the axis/legend gutters (framebuffer px, y-down from the top).
+    if (u.clipToPlot) {
+      const [w, h] = u.viewport;
+      const [x0, y0, x1, y1] = u.plotRect;
+      const sx = Math.max(0, Math.round(x0 * w));
+      const sy = Math.max(0, Math.round((1 - y1) * h));
+      const sw = Math.max(0, Math.min(w, Math.round(x1 * w)) - sx);
+      const sh = Math.max(0, Math.min(h, Math.round((1 - y0) * h)) - sy);
+      pass.setScissorRect(sx, sy, sw, sh);
+    }
     pass.setBindGroup(0, this.bindGroup!);
     pass.setVertexBuffer(0, this.quadBuf);
     pass.setVertexBuffer(1, this.instBuf);
