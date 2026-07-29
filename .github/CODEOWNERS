@@ -1,0 +1,4 @@
+# All changes require review from the core team.
+# Combined with a branch ruleset on `main` that requires PR review from Code
+# Owners, this means nothing merges without a @smalldat/smalldat-core approval.
+* @smalldat/smalldat-core
