@@ -4,10 +4,12 @@ High-performance visual components rendered as **points/sand** — no SVG.
 First component: a sand bar chart where thousands of grains pour in and settle
 into bars. WebGPU-first, Canvas2D fallback.
 
-**Docs:** full property reference and examples live in [`docs/`](docs/) (a static
+**Docs:** full property reference and examples live at the
+[documentation site](https://smalldat.github.io/sandycoast/) (a static
 GitHub Pages site). **License:** dual-licensed — free for non-commercial use, paid
 commercial license for revenue-generating organizations. See
-[LICENSE](LICENSE) and the [License page](docs/license.html).
+[LICENSE](https://github.com/smalldat/sandycoast/blob/main/LICENSE) and the
+[License page](https://smalldat.github.io/sandycoast/license.html).
 
 ## Install / dev
 
@@ -86,7 +88,7 @@ animation: {
 The pure array helpers behind the methods — `patchPoints`, `appendPoints`,
 `removePoints` — are exported for use off-chart. The playground's **Live data**
 toolbar (with **Continuous update** / **Continuous addition** toggles) drives
-them; see [plans/05-live-data-update-add-remove.md](plans/05-live-data-update-add-remove.md).
+them; see [plans/05-live-data-update-add-remove.md](https://github.com/smalldat/sandycoast/blob/main/plans/05-live-data-update-add-remove.md).
 
 ## Data model (generic to all visuals)
 
@@ -100,7 +102,7 @@ Grains live in a Structure-of-Arrays buffer uploaded to the GPU once. Each frame
 the CPU only bumps a `now` uniform; the vertex shader derives every grain's
 position via `mix(start, target, ease(t)) + fading jitter`. Hover uses a cheap
 CPU bar-region hit-test; the hovered `barId` drives a shader highlight and extra
-jitter. See [plans/01-bar-chart-sand-rendering.md](plans/01-bar-chart-sand-rendering.md).
+jitter. See [plans/01-bar-chart-sand-rendering.md](https://github.com/smalldat/sandycoast/blob/main/plans/01-bar-chart-sand-rendering.md).
 
 ## Status
 
@@ -108,9 +110,9 @@ v0: data model, scales (linear/time/band), grain packing, WebGPU + Canvas2D
 backends, `BarChart` with pour-in, morph `update()`, and hover interaction.
 Plan 02: axes/ticks/labels, positionable legend, current-value readout.
 Plan 03: per-bar solid **fill + border** that fade in while the sand particles
-fade out (`bars` config; see [plans/03-bar-borders-fill.md](plans/03-bar-borders-fill.md)).
+fade out (`bars` config; see [plans/03-bar-borders-fill.md](https://github.com/smalldat/sandycoast/blob/main/plans/03-bar-borders-fill.md)).
 Plan 05: live **`update` / `add` / `remove`** with smooth border tween + grain
-morph, no full re-pour (see [plans/05-live-data-update-add-remove.md](plans/05-live-data-update-add-remove.md)).
+morph, no full re-pour (see [plans/05-live-data-update-add-remove.md](https://github.com/smalldat/sandycoast/blob/main/plans/05-live-data-update-add-remove.md)).
 `LineChart`: solid line / spline / **stacked area** (`line.stack`), grain count
 bounded by ribbon area not point count (`maxGrains` is a hard ceiling), a
 line-only morph (`animation.morphGrains: false`), and a `currentValue` cursor
@@ -120,13 +122,13 @@ Planned next: WebGL2 fallback, more chart types, framework wrappers.
 
 ## Documentation
 
-Static docs (no build step) live in [`docs/`](docs/), structured by visual:
+Static docs (no build step) are served from [GitHub Pages](https://smalldat.github.io/sandycoast/), structured by visual:
 
-- [Overview + install/publish](docs/index.html)
-- [Data model & shared config](docs/data-model.html)
-- [Bar chart](docs/bar-chart.html) — every config property, methods, events, examples
-- [Line chart](docs/line-chart.html)
-- [License](docs/license.html)
+- [Overview + install/publish](https://smalldat.github.io/sandycoast/index.html)
+- [Data model & shared config](https://smalldat.github.io/sandycoast/data-model.html)
+- [Bar chart](https://smalldat.github.io/sandycoast/bar-chart.html) — every config property, methods, events, examples
+- [Line chart](https://smalldat.github.io/sandycoast/line-chart.html)
+- [License](https://smalldat.github.io/sandycoast/license.html)
 
 **Publish to GitHub Pages:** Settings → Pages → *Deploy from a branch* → branch
 `main`, folder `/docs` → Save. A `.nojekyll` file is included so the HTML is
@@ -142,5 +144,5 @@ Dual-licensed:
   revenue-generating product, service, or internal tool needs a paid commercial
   license. Contact <office-dat@smalldat.com>.
 
-Full terms in [LICENSE](LICENSE). The `LICENSE` text is a starting template —
+Full terms in [LICENSE](https://github.com/smalldat/sandycoast/blob/main/LICENSE). The `LICENSE` text is a starting template —
 have a lawyer review it before relying on it commercially.
