@@ -1,25 +1,29 @@
-name: Publish package to npm
+name: Release (publish npm + deploy site)
 
-# Publishes @smalldat/visual to npm when a GitHub Release is published.
-# Requires an NPM_TOKEN secret (an npm automation token with publish rights).
-# The release tag should match the package.json version (e.g. v0.0.1).
+# Runs when a release/* branch is pushed/created. Builds the package and
+# publishes it to npm, then builds the static site and deploys it to Firebase
+# Hosting in the GCP project `smalldat`.
+#
+# Requires:
+#   - NPM_TOKEN secret (npm automation token with publish rights)
+#   - GCP_WIF_PROVIDER / GCP_DEPLOY_SA secrets (Workload Identity Federation)
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: ['release/**']
   workflow_dispatch: {}
 
-# Serialize publishes.
+# Serialize releases.
 concurrency:
-  group: publish-npm
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: read
-  id-token: write # enables npm provenance
+  id-token: write # npm provenance + Workload Identity Federation
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,10 +45,28 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build
+      - name: Build package
         run: npm run build
 
-      - name: Publish
+      - name: Publish to npm
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Build static site
+        run: npm run build:site
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - name: Deploy to Firebase Hosting
+        run: |
+          npm install -g firebase-tools
+          firebase deploy \
+            --only hosting:sandycoast \
+            --project smalldat \
+            --non-interactive \
+            --message "release ${GITHUB_SHA::7}"
