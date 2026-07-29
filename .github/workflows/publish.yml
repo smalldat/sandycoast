@@ -36,6 +36,9 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
+      - name: Upgrade npm (Trusted Publishing needs npm >= 11.5.1)
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: npm ci
 
@@ -48,10 +51,11 @@ jobs:
       - name: Build package
         run: npm run build
 
+      # Auth via OIDC Trusted Publishing — no NPM_TOKEN. Requires a trusted
+      # publisher configured on npmjs for this repo + workflow, and the
+      # id-token: write permission set above. Provenance is automatic.
       - name: Publish to npm
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: Build static site
         run: npm run build:site
