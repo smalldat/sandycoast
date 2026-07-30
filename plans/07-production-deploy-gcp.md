@@ -4,7 +4,7 @@ Status: **CONFIGURED — awaiting one-time GCP/DNS setup** (see §5)
 Target URL: `https://sandycoast.smalldat.com`
 GCP project: `smalldat` (billing enabled, deploy stays in free tier)
 
-> This deploys the **playground demo site**, not the `@smalldat/visual` npm
+> This deploys the **playground demo site**, not the `@smalldat/sandycoast` npm
 > library. The library ships via `npm run build` (tsup → `dist/`); the demo ships
 > via `npm run build:site` (Vite → `site-dist/`). Two separate artifacts, one repo.
 

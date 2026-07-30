@@ -1,5 +1,5 @@
 {
-  "name": "@smalldat/visual",
+  "name": "@smalldat/sandycoast",
   "version": "1.0.0",
   "description": "High-performance point/sand-based visual components (not SVG).",
   "type": "module",

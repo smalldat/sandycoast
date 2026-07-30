@@ -1,7 +1,7 @@
 # Plan 04 — Playground: Persist Control Settings to localStorage
 
 Status: **AS-BUILT**
-Package: `@smalldat/visual`
+Package: `@smalldat/sandycoast`
 Depends on: Plan 03-demo (component nav & live controls)
 
 > The control panel edits a per-component `cfg` object that was rebuilt from

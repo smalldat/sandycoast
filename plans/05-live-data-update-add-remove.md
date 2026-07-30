@@ -1,7 +1,7 @@
 # Plan 05 — Live data: `update` / `add` / `remove`
 
 Status: **AS-BUILT**
-Package: `@smalldat/visual`
+Package: `@smalldat/sandycoast`
 Depends on: Plan 01 (sand bar chart + morph), Plan 03 (bar fill/border reveal)
 
 > Generic control methods to mutate a live chart **without a full re-pour**.

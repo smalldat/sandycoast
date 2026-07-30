@@ -1,7 +1,7 @@
 # Plan 01 — Sand Bar Chart (point-based visual engine)
 
 Status: **v0 IMPLEMENTED** (WebGPU + Canvas2D; WebGL2 fallback still pending)
-Package: `@smalldat/visual`
+Package: `@smalldat/sandycoast`
 
 > Sections 1–11 are the original approved plan, annotated where the build
 > diverged. **§12 "As-built"** is the authoritative record of what shipped this
@@ -29,7 +29,7 @@ Locked decisions (from review questions):
 ## 2. Architecture (layered)
 
 ```
-@smalldat/visual
+@smalldat/sandycoast
 ├─ core/
 │  ├─ data/        generic X,Y,Z model + accessors + validation
 │  ├─ scales/      linear, time, band(ordinal) scales  → normalized device coords
@@ -177,7 +177,7 @@ interface Renderer {
 
 ```ts
 // As-built API.
-import { BarChart } from '@smalldat/visual';
+import { BarChart } from '@smalldat/sandycoast';
 
 const chart = new BarChart(document.querySelector('#el')!, {
   data: {

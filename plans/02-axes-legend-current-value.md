@@ -1,7 +1,7 @@
 # Plan 02 — Axes, Current Value & Legend
 
 Status: **PROPOSED**
-Package: `@smalldat/visual`
+Package: `@smalldat/sandycoast`
 Depends on: Plan 01 (v0 sand bar chart, as-built)
 
 > Adds chart *chrome* — axes (with ticks), a positionable legend, and a

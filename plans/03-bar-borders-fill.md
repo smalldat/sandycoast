@@ -1,7 +1,7 @@
 # Plan 03 — Bar Borders & Fill (particle → solid reveal)
 
 Status: **AS-BUILT** (M1–M4 landed)
-Package: `@smalldat/visual`
+Package: `@smalldat/sandycoast`
 Depends on: Plan 01 (v0 sand bar chart), Plan 02 (chrome / overlay / plotRect)
 
 > Adds an optional **solid layer** per bar — a configurable **fill** and

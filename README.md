@@ -1,4 +1,4 @@
-# @smalldat/visual
+# @smalldat/sandycoast
 
 High-performance visual components rendered as **points/sand** — no SVG.
 First component: a sand bar chart where thousands of grains pour in and settle
@@ -30,7 +30,7 @@ npm run lint       # biome
 ## Quick start
 
 ```ts
-import { BarChart } from '@smalldat/visual';
+import { BarChart } from '@smalldat/sandycoast';
 
 const chart = new BarChart(document.querySelector('#el')!, {
   data: {

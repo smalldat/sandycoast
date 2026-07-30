@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Data model &amp; shared config — @smalldat/visual</title>
+  <title>Data model &amp; shared config — @smalldat/sandycoast</title>
   <meta name="description" content="The generic Point data model, scales, colors, easing and backends shared by every visual." />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -12,7 +12,7 @@
   <aside class="sidebar">
     <a class="brand" href="index.html">
       <span class="dot"></span>
-      <span>@smalldat/visual<small>sand-based charts</small></span>
+      <span>@smalldat/sandycoast<small>sand-based charts</small></span>
     </a>
     <nav class="nav-group">
       <h4>Start here</h4>
@@ -86,7 +86,7 @@
     <h2 id="fromrows">Building from arbitrary rows</h2>
     <p><code>fromRows(rows, spec)</code> maps any array of objects into a <code>DataSet</code> using
       accessor functions.</p>
-    <pre><code><span class="tok-key">import</span> { fromRows } <span class="tok-key">from</span> <span class="tok-str">'@smalldat/visual'</span>;
+    <pre><code><span class="tok-key">import</span> { fromRows } <span class="tok-key">from</span> <span class="tok-str">'@smalldat/sandycoast'</span>;
 
 <span class="tok-key">const</span> data = <span class="tok-fn">fromRows</span>(salesRows, {
   x: (r) => r.quarter,
@@ -129,7 +129,7 @@
       hex (<code>#rgb</code>, <code>#rrggbb</code>, <code>#rrggbbaa</code>) or <code>rgb()</code> /
       <code>rgba()</code> string works. <code>parseColor</code> and <code>cssRGBA</code> convert to/from
       the internal <code>RGBA</code> (0..1) tuple.</p>
-    <pre><code><span class="tok-key">import</span> { DEFAULT_PALETTE } <span class="tok-key">from</span> <span class="tok-str">'@smalldat/visual'</span>;
+    <pre><code><span class="tok-key">import</span> { DEFAULT_PALETTE } <span class="tok-key">from</span> <span class="tok-str">'@smalldat/sandycoast'</span>;
 <span class="tok-com">// ['#e8598b', '#8bc4e8', '#e8c45a', '#5ae89a', '#b98be8', '#e8895a']</span></code></pre>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px">
       <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono)"><span style="width:16px;height:16px;border-radius:4px;background:#e8598b"></span>#e8598b</span>
@@ -230,7 +230,7 @@ chart.<span class="tok-fn">resetView</span>();           <span class="tok-com">/
       and <code>ZoomControls</code> classes are exported too if you're building a custom visual.</div>
 
     <h2 id="exports">What's exported</h2>
-    <p>From <code>@smalldat/visual</code>:</p>
+    <p>From <code>@smalldat/sandycoast</code>:</p>
     <ul>
       <li><strong>Charts:</strong> <code>BarChart</code>, <code>LineChart</code> (+ their config &amp; meta types).</li>
       <li><strong>Data:</strong> <code>fromRows</code>, <code>patchPoints</code>, <code>appendPoints</code>, <code>removePoints</code>, <code>seriesKeys</code>, <code>validate</code>, <code>inferType</code>, <code>resolveTypes</code>, <code>toNumeric</code>, <code>DataError</code> (+ <code>DataSet</code>, <code>Point</code>, <code>Scalar</code>, <code>FieldType</code>, <code>PointPatch</code>, <code>PointRef</code> types).</li>

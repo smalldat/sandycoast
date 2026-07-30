@@ -1,7 +1,7 @@
 # Plan 03 — Demo Playground: Component Nav & Live Controls
 
 Status: **AS-BUILT**
-Package: `@smalldat/visual`
+Package: `@smalldat/sandycoast`
 Depends on: Plan 01 (v0 sand bar chart), Plan 02 (axes/legend/current-value)
 
 > Rebuilds the dev playground from a fixed single-chart page with toggle buttons
