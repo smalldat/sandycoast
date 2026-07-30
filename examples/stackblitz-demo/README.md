@@ -7,7 +7,7 @@ Minimal Vite + TypeScript project that pours a single-series sand bar chart with
 
 Once this repo is on GitHub, open the folder directly — no local install:
 
-https://stackblitz.com/github/smalldat/sandycoast/tree/main/examples/stackblitz
+https://stackblitz.com/github/smalldat/sandycoast/tree/main/examples/stackblitz-demo
 
 StackBlitz runs Vite in-browser (WebContainers) and installs
 `@smalldat/sandycoast` from npm automatically.
