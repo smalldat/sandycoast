@@ -1,7 +1,7 @@
 # Plan 06 — Configurable Axis Fonts & Y-Title Direction
 
 Status: **AS-BUILT**
-Package: `@smalldat/visual`
+Package: `@smalldat/sandycoast`
 Depends on: Plan 02 (axes/legend/current-value chrome)
 
 > Makes axis tick + title typography configurable per axis (family, weight —

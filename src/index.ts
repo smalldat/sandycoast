@@ -1,4 +1,4 @@
-// Public API for @smalldat/visual.
+// Public API for @smalldat/sandycoast.
 
 // Bar chart
 export { BarChart } from './charts/bar/BarChart.js';
