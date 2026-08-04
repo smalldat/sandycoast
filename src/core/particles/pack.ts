@@ -14,8 +14,10 @@ export interface BarRect {
 
 export interface PackOptions {
   /**
-   * Grains per unit area of layout space. Total grains for a bar ≈
-   * density * (width * height). Clamped by `maxGrains` across all bars.
+   * Grain budget multiplier. The chart's total grain count is
+   * `density * GRAINS_AT_UNIT_DENSITY`, clamped to `maxGrains` — it does *not*
+   * depend on how many bars/points the data has. Geometry (bar area, segment
+   * length) only decides how that fixed budget is shared out.
    */
   density: number;
   /** Global grain ceiling (default 100k). Bars share it proportionally. */
@@ -40,18 +42,71 @@ export interface PackTarget {
 
 const DEFAULT_MAX = 100_000;
 
-/** Compute how many grains each bar gets, respecting the global ceiling. */
-export function grainCounts(bars: BarRect[], opts: PackOptions): number[] {
+/**
+ * Total grains a chart draws at `grainDensity === 1`. The grain budget is a
+ * function of density alone, so a series sampled by 10 points and the same
+ * series sampled by 10,000 points get the same amount of sand.
+ */
+export const GRAINS_AT_UNIT_DENSITY = 20_000;
+
+/** Grain budget for a whole chart: density-driven, clamped by the ceiling. */
+export function grainBudget(opts: PackOptions): number {
   const density = Math.max(0, opts.density);
-  const raw = bars.map((b) => Math.max(0, Math.round(density * b.width * b.height * 1e4)));
-  const total = raw.reduce((a, b) => a + b, 0);
-  const max = opts.maxGrains ?? DEFAULT_MAX;
-  if (total <= max || total === 0) return raw;
-  const scale = max / total;
-  // Scale strictly (floor to 0 when a bar's share rounds out) so the total
-  // honors `maxGrains` no matter how many bars there are — grain cost stays
-  // bounded by the ceiling, not by the bar count.
-  return raw.map((n) => Math.max(0, Math.floor(n * scale)));
+  const max = Math.max(0, opts.maxGrains ?? DEFAULT_MAX);
+  return Math.min(max, Math.round(density * GRAINS_AT_UNIT_DENSITY));
+}
+
+/**
+ * Split `total` into integer per-slot counts proportional to `weights`, using
+ * largest-remainder apportionment: floor every share, then hand the leftover
+ * units to the largest fractional remainders.
+ *
+ * Why not `Math.floor(weight * scale)` per slot: with many slots each share is
+ * well below 1, so flooring zeroes nearly all of them and the chart draws a
+ * small, lopsided fraction of its budget (grains bunch onto whichever slots
+ * happen to round up). Largest-remainder guarantees `sum(result) === total`
+ * exactly and spreads the shortfall evenly.
+ */
+export function distribute(total: number, weights: number[]): number[] {
+  const n = weights.length;
+  const out = new Array<number>(n).fill(0);
+  if (n === 0 || total <= 0) return out;
+
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += Math.max(0, weights[i]!);
+  // No geometry to weight by (all-zero widths/lengths) — spread evenly.
+  if (sum <= 0) {
+    for (let i = 0; i < n; i++) out[i] = Math.floor(total / n) + (i < total % n ? 1 : 0);
+    return out;
+  }
+
+  const remainders: { i: number; frac: number }[] = [];
+  let placed = 0;
+  for (let i = 0; i < n; i++) {
+    const share = (Math.max(0, weights[i]!) / sum) * total;
+    const whole = Math.floor(share);
+    out[i] = whole;
+    placed += whole;
+    remainders.push({ i, frac: share - whole });
+  }
+
+  // Hand out what flooring left over, biggest fractional part first. Ties break
+  // by index so packing stays deterministic for a given layout.
+  remainders.sort((a, b) => b.frac - a.frac || a.i - b.i);
+  for (let k = 0; placed < total; k++, placed++) out[remainders[k % n]!.i]!++;
+  return out;
+}
+
+/**
+ * Compute how many grains each bar gets. The total is the density-driven
+ * {@link grainBudget}; bars share it in proportion to their area, so adding
+ * bars subdivides the same sand rather than asking for more.
+ */
+export function grainCounts(bars: BarRect[], opts: PackOptions): number[] {
+  return distribute(
+    grainBudget(opts),
+    bars.map((b) => Math.max(0, b.width) * Math.max(0, b.height)),
+  );
 }
 
 /**
@@ -132,26 +187,20 @@ export interface LinePackOptions extends PackOptions {
 }
 
 /**
- * Grains per segment, proportional to its length × ribbon thickness, respecting
- * the global ceiling. Mirrors {@link grainCounts} for line paths.
+ * Grains per segment: the density-driven {@link grainBudget} shared out along
+ * the path in proportion to arc length, giving constant linear grain density
+ * along the stroke. Mirrors {@link grainCounts} for line paths.
+ *
+ * Arc length is a *weight*, not a multiplier — resampling the same curve at ten
+ * times the point count leaves the total unchanged, it only subdivides the
+ * shares more finely. `thickness` likewise doesn't change the count: it spreads
+ * the same grains over a wider ribbon.
  */
 export function lineGrainCounts(segs: LineSeg[], opts: LinePackOptions): number[] {
-  const density = Math.max(0, opts.density);
-  const thickness = Math.max(0, opts.thickness);
-  const raw = segs.map((s) => {
-    const len = Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
-    // Grains per segment ∝ its ribbon area (length × thickness). No per-segment
-    // floor: total ≈ density × totalPathLength × thickness, which depends on the
-    // *shape* of the line, not on how many points sample it. A zero-length
-    // segment (lone vertex) still gets a small dab so it renders.
-    if (len === 0) return Math.max(1, Math.round(density * thickness * thickness * 1e4));
-    return Math.round(density * len * thickness * 1e4);
-  });
-  const total = raw.reduce((a, b) => a + b, 0);
-  const max = opts.maxGrains ?? DEFAULT_MAX;
-  if (total <= max || total === 0) return raw;
-  const scale = max / total;
-  return raw.map((n) => Math.max(0, Math.floor(n * scale)));
+  return distribute(
+    grainBudget(opts),
+    segs.map((s) => Math.hypot(s.x1 - s.x0, s.y1 - s.y0)),
+  );
 }
 
 /**

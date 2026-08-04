@@ -1,5 +1,4 @@
 import type { Scalar } from '../../core/data/types.js';
-import type { RGBA } from '../../core/render/types.js';
 import { cssRGBA } from '../../core/util/color.js';
 import { type AxisModel, formatNumber } from '../bar/axis.js';
 import type { ResolvedAxis, ResolvedChrome } from '../bar/chrome.js';
@@ -49,18 +48,32 @@ export interface OverlayState {
   viewOffset?: [number, number];
   /** Clip plot-interior chrome (line/grid/ticks) to the plot rect (pan/zoom). */
   clipToPlot?: boolean;
+  /**
+   * Bumped by the chart whenever the underlying point geometry changes (data
+   * rebuild, morph tick). Together with the view/size fields it keys the cached
+   * series bitmaps — see {@link Overlay.seriesLayers}.
+   */
+  geomVersion: number;
 }
 
-/** `cssRGBA` with an rgb gain (channels multiplied, then clamped) baked in. */
-function gainedRGBA(c: RGBA, gain: number, alpha: number): string {
-  if (gain === 1) return cssRGBA(c, alpha);
-  const g: RGBA = [
-    Math.min(1, c[0] * gain),
-    Math.min(1, c[1] * gain),
-    Math.min(1, c[2] * gain),
-    c[3],
-  ];
-  return cssRGBA(g, alpha);
+/**
+ * Below this average horizontal point spacing (device px) a spline's control
+ * points land inside a single pixel, so it rasterizes the same as straight
+ * segments. Dropping to `lineTo` there skips the curve flattening for free.
+ */
+const SPLINE_MIN_SPACING_PX = 3;
+
+/** Stroke bleed allowance so a wide line isn't clipped at the layer edge. */
+const LAYER_PAD_PX = 8;
+
+/**
+ * One series pre-rasterized into its own bitmap, positioned at `left`/`top` in
+ * device px on the main overlay canvas.
+ */
+interface SeriesLayer {
+  canvas: HTMLCanvasElement;
+  left: number;
+  top: number;
 }
 
 function defaultFormat(p: LineMeta): string {
@@ -77,6 +90,10 @@ function defaultFormat(p: LineMeta): string {
  */
 export class Overlay {
   private ctx: CanvasRenderingContext2D;
+  /** Pre-rasterized per-series bitmaps; see {@link seriesLayers}. */
+  private layers: SeriesLayer[] | null = null;
+  /** Key the layers were rasterized for; a mismatch forces a re-render. */
+  private layerKey = '';
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -86,6 +103,16 @@ export class Overlay {
 
   clear(): void {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  /** Release the cached series bitmaps (several MB each on a wide chart). */
+  dispose(): void {
+    for (const l of this.layers ?? []) {
+      l.canvas.width = 0;
+      l.canvas.height = 0;
+    }
+    this.layers = null;
+    this.layerKey = '';
   }
 
   draw(s: OverlayState): void {
@@ -146,6 +173,122 @@ export class Overlay {
   }
 
   /**
+   * Each series rasterized once into its own bitmap, re-rendered only when the
+   * geometry or the projection actually changes.
+   *
+   * Hover redraws dominate this canvas: the highlight effect repaints every
+   * frame while the pointer is over a series, but only the *style* differs
+   * between those frames. Caching the traced `Path2D` wasn't enough — a
+   * `Path2D` caches path construction, not rasterization, and rasterizing is
+   * where the time goes. A 5k-point noisy area fill is a self-intersecting
+   * 10k-vertex polygon: nonzero-winding scanline fill sorts thousands of edge
+   * crossings per scanline, every scanline, every frame. Doing that three times
+   * a frame to change a color is what held the chart at ~16 FPS.
+   *
+   * So each series is rasterized at gain 1 and full per-layer opacity, and a
+   * steady-state frame becomes one `drawImage` per series. The reveal factor
+   * rides on `globalAlpha` and the hover highlight on a `brightness()` filter,
+   * neither of which needs the path back.
+   */
+  private seriesLayers(
+    s: OverlayState,
+    dx: (lx: number) => number,
+    dy: (ly: number) => number,
+    dpr: number,
+  ): SeriesLayer[] {
+    const { fill, line } = s.lineStyle;
+    const key = [
+      s.geomVersion,
+      s.deviceW,
+      s.deviceH,
+      s.plotRect.join(','),
+      s.viewScale?.join(',') ?? '',
+      s.viewOffset?.join(',') ?? '',
+      s.stacked,
+      line.style,
+      line.on,
+      line.width,
+      line.opacity,
+      fill.on,
+      fill.opacity,
+      dpr,
+      s.paths.map((p) => p.color.join(',')).join(';'),
+    ].join('|');
+    if (this.layers && this.layerKey === key) return this.layers;
+
+    const [x0, y0, x1, y1] = s.plotRect;
+    // Layers cover the plot rect (plus stroke bleed) rather than the whole
+    // canvas — same pixels, a fraction of the memory on a wide chart.
+    const left = Math.max(0, Math.floor(x0 * s.deviceW) - LAYER_PAD_PX);
+    const top = Math.max(0, Math.floor((1 - y1) * s.deviceH) - LAYER_PAD_PX);
+    const right = Math.min(s.deviceW, Math.ceil(x1 * s.deviceW) + LAYER_PAD_PX);
+    const bottom = Math.min(s.deviceH, Math.ceil((1 - y0) * s.deviceH) + LAYER_PAD_PX);
+    const lw = Math.max(1, right - left);
+    const lh = Math.max(1, bottom - top);
+
+    // Stacked bands must tile without gaps, so their edges are straight (a spline
+    // top wouldn't meet the next band's straight floor). Plain areas keep spline.
+    const splineWanted = line.style === 'spline' && !s.stacked;
+    const layers: SeriesLayer[] = [];
+
+    for (const path of s.paths) {
+      const canvas = this.layers?.[layers.length]?.canvas ?? document.createElement('canvas');
+      if (canvas.width !== lw) canvas.width = lw;
+      if (canvas.height !== lh) canvas.height = lh;
+      const lctx = canvas.getContext('2d');
+      if (!lctx) continue;
+      lctx.clearRect(0, 0, lw, lh);
+      layers.push({ canvas, left, top });
+
+      const n = path.points.length;
+      if (n === 0) continue;
+      const xs = new Float64Array(n);
+      const ys = new Float64Array(n);
+      const bases = new Float64Array(n);
+      for (let i = 0; i < n; i++) {
+        const m = s.metas[path.points[i]!]!;
+        xs[i] = dx(m.pos) - left;
+        ys[i] = dy(m.height) - top;
+        bases[i] = dy(m.baseHeight) - top;
+      }
+      const spacing = n > 1 ? Math.abs(xs[n - 1]! - xs[0]!) / (n - 1) : Number.POSITIVE_INFINITY;
+      const spline = splineWanted && spacing >= SPLINE_MIN_SPACING_PX;
+
+      if (fill.on) {
+        lctx.beginPath();
+        lctx.moveTo(xs[0]!, bases[0]!);
+        lctx.lineTo(xs[0]!, ys[0]!);
+        traceTop(lctx, xs, ys, spline);
+        // Trace the stack floor back under the top edge (reversed) so the band
+        // sits on the series below; for plain areas every base is the baseline.
+        for (let i = n - 1; i >= 0; i--) lctx.lineTo(xs[i]!, bases[i]!);
+        lctx.closePath();
+        lctx.fillStyle = cssRGBA(path.color, fill.opacity);
+        lctx.fill();
+      }
+
+      if (line.on && n > 1) {
+        lctx.beginPath();
+        lctx.moveTo(xs[0]!, ys[0]!);
+        traceTop(lctx, xs, ys, spline);
+        lctx.strokeStyle = cssRGBA(path.color, line.opacity);
+        lctx.lineWidth = line.width * dpr;
+        // Round joins cost real time on a 5k-segment polyline and are invisible
+        // once points sit within a pixel or two of each other.
+        const cheapJoins = spacing < SPLINE_MIN_SPACING_PX;
+        lctx.lineJoin = cheapJoins ? 'bevel' : 'round';
+        lctx.lineCap = cheapJoins ? 'butt' : 'round';
+        lctx.stroke();
+      }
+    }
+
+    // Drop any canvases left over from a larger series count.
+    this.layers = layers;
+    this.layerKey = key;
+    return layers;
+  }
+
+  /**
    * Solid area fill + connecting line for each series, opacity scaled by the
    * reveal factor `s.solid`. Colors are always the series color (only opacity is
    * configurable). Drawn under the axes/current-value so chrome stays legible.
@@ -157,47 +300,25 @@ export class Overlay {
     dpr: number,
   ): void {
     const ctx = this.ctx;
-    const { fill, line } = s.lineStyle;
-    const solid = s.solid;
-    // Stacked bands must tile without gaps, so their edges are straight (a spline
-    // top wouldn't meet the next band's straight floor). Plain areas keep spline.
-    const spline = line.style === 'spline' && !s.stacked;
+    const layers = this.seriesLayers(s, dx, dy, dpr);
+    const filterSupported = 'filter' in ctx;
 
-    for (const path of s.paths) {
-      const pts = path.points.map((mi) => {
-        const m = s.metas[mi]!;
-        return { x: dx(m.pos), y: dy(m.height), base: dy(m.baseHeight) };
-      });
-      if (pts.length === 0) continue;
+    for (let si = 0; si < s.paths.length; si++) {
+      const path = s.paths[si]!;
+      const layer = layers[si];
+      if (!layer || path.points.length === 0) continue;
       // All of a series' points share the same eased weight; take the first.
       const w = s.hoverWeights[path.points[0]!] ?? 0;
       const gain = w > 0 ? 1 + (s.highlightGain - 1) * w : 1;
 
-      if (fill.on) {
-        ctx.beginPath();
-        ctx.moveTo(pts[0]!.x, pts[0]!.base);
-        ctx.lineTo(pts[0]!.x, pts[0]!.y);
-        if (spline) strokeSplinePath(ctx, pts);
-        else for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y);
-        // Trace the stack floor back under the top edge (reversed) so the band
-        // sits on the series below; for plain areas every base is the baseline.
-        for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i]!.x, pts[i]!.base);
-        ctx.closePath();
-        ctx.fillStyle = gainedRGBA(path.color, gain, fill.opacity * solid);
-        ctx.fill();
-      }
-
-      if (line.on && pts.length > 1) {
-        ctx.beginPath();
-        ctx.moveTo(pts[0]!.x, pts[0]!.y);
-        if (spline) strokeSplinePath(ctx, pts);
-        else for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y);
-        ctx.strokeStyle = gainedRGBA(path.color, gain, line.opacity * solid);
-        ctx.lineWidth = line.width * dpr;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        ctx.stroke();
-      }
+      // Per-layer opacity is already baked in; `solid` scales the whole reveal.
+      ctx.globalAlpha = s.solid;
+      // brightness() multiplies rgb and leaves alpha alone — the same thing the
+      // old per-draw rgb gain did, so highlighting matches.
+      if (gain !== 1 && filterSupported) ctx.filter = `brightness(${gain})`;
+      ctx.drawImage(layer.canvas, layer.left, layer.top);
+      ctx.filter = 'none';
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -489,19 +610,26 @@ export class Overlay {
  * (assumes the path is already at `pts[0]`). Converts each Catmull-Rom span to
  * a cubic bézier, giving a natural spline with no external control points.
  */
-function strokeSplinePath(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]): void {
-  const n = pts.length;
+/**
+ * Trace the top edge from index 1 onward into `path` (the caller has already
+ * moved to point 0). `spline` picks Catmull-Rom-style beziers over straight
+ * segments.
+ */
+function traceTop(path: CanvasPath, xs: Float64Array, ys: Float64Array, spline: boolean): void {
+  const n = xs.length;
   if (n < 2) return;
+  if (!spline) {
+    for (let i = 1; i < n; i++) path.lineTo(xs[i]!, ys[i]!);
+    return;
+  }
   for (let i = 0; i < n - 1; i++) {
-    const p0 = pts[i - 1] ?? pts[i]!;
-    const p1 = pts[i]!;
-    const p2 = pts[i + 1]!;
-    const p3 = pts[i + 2] ?? p2;
-    const c1x = p1.x + (p2.x - p0.x) / 6;
-    const c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6;
-    const c2y = p2.y - (p3.y - p1.y) / 6;
-    ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p2.x, p2.y);
+    const j = i > 0 ? i - 1 : i; // p0
+    const k = i + 2 < n ? i + 2 : i + 1; // p3
+    const c1x = xs[i]! + (xs[i + 1]! - xs[j]!) / 6;
+    const c1y = ys[i]! + (ys[i + 1]! - ys[j]!) / 6;
+    const c2x = xs[i + 1]! - (xs[k]! - xs[i]!) / 6;
+    const c2y = ys[i + 1]! - (ys[k]! - ys[i]!) / 6;
+    path.bezierCurveTo(c1x, c1y, c2x, c2y, xs[i + 1]!, ys[i + 1]!);
   }
 }
 
