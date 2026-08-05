@@ -3,6 +3,7 @@ import type { ControlGroup } from './controls.js';
 import { renderControls } from './controls.js';
 import { clearSettings, deepMerge, loadSettings, saveSettings } from './persist.js';
 import type { DemoComponent } from './registry.js';
+import { chartPalette } from './theme.js';
 
 const SERIES = ['EU', 'US', 'APAC'];
 /** Slots the chart starts with, and how far past that continuous addition runs. */
@@ -35,12 +36,13 @@ function randomData(slots: number): DataSet {
 type Cfg = Record<string, unknown>;
 
 function defaultConfig(): Cfg {
+  const palette = chartPalette();
   return {
     // Playground-only knob (`slotCount`) the BarChart itself ignores.
     slotCount: DEFAULT_SLOTS,
     grainDensity: 0.9,
     maxGrains: 100000,
-    background: '#10141c',
+    background: palette.background,
     colors: ['#e8598b', '#8bc4e8', '#e8c45a'],
     backend: 'auto',
     grain: { sizePx: 2.4, shape: 'disc', jitter: 0.4, settleJitter: 0.02 },
@@ -63,11 +65,11 @@ function defaultConfig(): Cfg {
       },
     },
     axes: {
-      x: { show: true, ticks: 5, label: '', gridLines: false, color: '#8a93a6', fontPx: 11 },
-      y: { show: true, ticks: 5, label: 'value', gridLines: true, color: '#8a93a6', fontPx: 11 },
+      x: { show: true, ticks: 5, label: '', gridLines: false, color: palette.axis, fontPx: 11 },
+      y: { show: true, ticks: 5, label: 'value', gridLines: true, color: palette.axis, fontPx: 11 },
     },
     legend: { show: true, position: 'bottom', align: 'center', swatch: 'disc' },
-    currentValue: { show: true, mode: 'pointer', guide: 'y', markers: true, color: '#cdd3de' },
+    currentValue: { show: true, mode: 'pointer', guide: 'y', markers: true, color: palette.text },
     bars: {
       fill: { opacity: 0.85 },
       border: {
@@ -81,7 +83,7 @@ function defaultConfig(): Cfg {
       reveal: { start: 'afterPour', duration: 600, ease: 'easeOutCubic', grainsTo: 0.12 },
     },
     // On-screen FPS meter; 'off' hides it. Position pins it to an edge/corner.
-    fps: { position: 'off', color: '#cdd3de' },
+    fps: { position: 'off', color: palette.text },
     // Pan & zoom: drag to pan, wheel/UI to zoom. Off by default.
     panZoom: {
       enabled: false,

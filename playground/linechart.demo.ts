@@ -3,6 +3,7 @@ import type { ControlGroup } from './controls.js';
 import { renderControls } from './controls.js';
 import { clearSettings, deepMerge, loadSettings, saveSettings } from './persist.js';
 import type { DemoComponent } from './registry.js';
+import { chartPalette } from './theme.js';
 
 const SERIES = ['A', 'B', 'C'];
 /** Fixed wavelength (samples) so adding points refines the wave, not stretches it. */
@@ -232,13 +233,14 @@ class LineChartDemo implements DemoComponent {
 type Cfg = Record<string, unknown>;
 
 function defaultConfig(): Cfg {
+  const palette = chartPalette();
   return {
     dataMode: 'sinusoid',
     pointCount: 60,
     grainDensity: 1.4,
     maxGrains: 100000,
     lineThickness: 0.03,
-    background: '#10141c',
+    background: palette.background,
     colors: ['#e8598b', '#8bc4e8', '#e8c45a'],
     backend: 'auto',
     grain: { sizePx: 2.2, shape: 'disc', jitter: 0.5, settleJitter: 0.02 },
@@ -262,8 +264,8 @@ function defaultConfig(): Cfg {
       },
     },
     axes: {
-      x: { show: true, ticks: 8, label: '', gridLines: false, color: '#8a93a6', fontPx: 11 },
-      y: { show: true, ticks: 5, label: 'value', gridLines: true, color: '#8a93a6', fontPx: 11 },
+      x: { show: true, ticks: 8, label: '', gridLines: false, color: palette.axis, fontPx: 11 },
+      y: { show: true, ticks: 5, label: 'value', gridLines: true, color: palette.axis, fontPx: 11 },
     },
     legend: { show: true, position: 'bottom', align: 'center', swatch: 'disc' },
     currentValue: {
@@ -271,7 +273,7 @@ function defaultConfig(): Cfg {
       mode: 'pointer',
       guide: 'y',
       markers: true,
-      color: '#cdd3de',
+      color: palette.text,
     },
     line: {
       stack: false,
@@ -279,7 +281,7 @@ function defaultConfig(): Cfg {
       line: { style: 'spline', width: 2, opacity: 1 },
       reveal: { start: 'afterPour', duration: 600, ease: 'easeOutCubic', grainsTo: 0.1 },
     },
-    fps: { position: 'off', color: '#cdd3de' },
+    fps: { position: 'off', color: palette.text },
     // Pan & zoom: drag to pan, wheel/UI to zoom. Off by default.
     panZoom: {
       enabled: false,

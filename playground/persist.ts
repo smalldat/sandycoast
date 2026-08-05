@@ -61,7 +61,81 @@ export function clearSettings(id: string): void {
   }
 }
 
+/**
+ * Rewrite colour-valued fields of the saved config for `id` through `map`.
+ * Only `background` and `color` keys are considered, and only when their
+ * current value is a key of `map` — so palette colours migrate on a theme
+ * switch while anything the user picked by hand is preserved. No-ops when
+ * nothing is saved for `id`.
+ */
+export function remapSavedColors(id: string, map: Record<string, string>): void {
+  try {
+    const raw = localStorage.getItem(keyFor(id));
+    if (!raw) return;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed)) return;
+    localStorage.setItem(keyFor(id), JSON.stringify(remapColors(parsed, map)));
+  } catch {
+    // ignore
+  }
+}
+
+const COLOR_KEYS = new Set(['background', 'color']);
+
+function remapColors(node: Cfg, map: Record<string, string>): Cfg {
+  const out: Cfg = {};
+  for (const [k, v] of Object.entries(node)) {
+    if (isPlainObject(v)) out[k] = remapColors(v, map);
+    else if (typeof v === 'string' && COLOR_KEYS.has(k)) out[k] = map[v] ?? v;
+    else out[k] = v;
+  }
+  return out;
+}
+
 const ACTIVE_KEY = `smalldat:playground:active:v${VERSION}`;
+const CHROME_KEY = `smalldat:playground:chrome:v${VERSION}`;
+
+/** Playground chrome preferences — not part of any component's config. */
+export interface Chrome {
+  theme: 'dark' | 'light';
+  layout: 'tb' | 'lr';
+  /** User-dragged chart size in px, shared by every demo. `null` = auto. */
+  chartW: number | null;
+  chartH: number | null;
+}
+
+export const DEFAULT_CHROME: Chrome = { theme: 'dark', layout: 'tb', chartW: null, chartH: null };
+
+function finitePx(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : null;
+}
+
+/** Read the saved chrome preferences, falling back per-field to the defaults. */
+export function loadChrome(): Chrome {
+  try {
+    const raw = localStorage.getItem(CHROME_KEY);
+    if (!raw) return { ...DEFAULT_CHROME };
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed)) return { ...DEFAULT_CHROME };
+    return {
+      theme: parsed.theme === 'light' ? 'light' : 'dark',
+      layout: parsed.layout === 'lr' ? 'lr' : 'tb',
+      chartW: finitePx(parsed.chartW),
+      chartH: finitePx(parsed.chartH),
+    };
+  } catch {
+    return { ...DEFAULT_CHROME };
+  }
+}
+
+/** Persist the chrome preferences. Silently no-ops if storage is unavailable. */
+export function saveChrome(chrome: Chrome): void {
+  try {
+    localStorage.setItem(CHROME_KEY, JSON.stringify(chrome));
+  } catch {
+    // ignore
+  }
+}
 
 /** Remember which demo component was last shown. */
 export function saveActive(id: string): void {

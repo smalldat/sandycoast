@@ -3,6 +3,7 @@ import type { ControlGroup } from './controls.js';
 import { renderControls } from './controls.js';
 import { clearSettings, deepMerge, loadSettings, saveSettings } from './persist.js';
 import type { DemoComponent } from './registry.js';
+import { chartPalette } from './theme.js';
 
 /** Slice categories. The pie draws these; the slider walks the series. */
 const SLICES = ['Search', 'Direct', 'Social', 'Referral', 'Email', 'Ads'];
@@ -50,13 +51,14 @@ function randomData(seriesCount: number, sliceCount: number): DataSet {
 type Cfg = Record<string, unknown>;
 
 function defaultConfig(): Cfg {
+  const palette = chartPalette();
   return {
     // Playground-only knobs the PieChart itself ignores.
     seriesCount: DEFAULT_SERIES,
     sliceCount: 5,
     grainDensity: 0.9,
     maxGrains: 100000,
-    background: '#10141c',
+    background: palette.background,
     colors: ['#e8598b', '#8bc4e8', '#e8c45a', '#5ae89a', '#b98be8', '#e8895a'],
     backend: 'auto',
     grain: { sizePx: 2.4, shape: 'disc', jitter: 0.4, settleJitter: 0.02 },
@@ -90,17 +92,17 @@ function defaultConfig(): Cfg {
     // `axes.x` styles the slider's ticks, exactly as it styles the bar chart's
     // category axis.
     axes: {
-      x: { show: true, ticks: 6, label: 'month', color: '#8a93a6', fontPx: 11 },
+      x: { show: true, ticks: 6, label: 'month', color: palette.axis, fontPx: 11 },
     },
     legend: { show: true, position: 'right', align: 'center', swatch: 'disc' },
     title: { text: 'Traffic by channel', position: 'top', align: 'center', fontPx: 14 },
-    currentValue: { show: true, mode: 'pointer', color: '#cdd3de' },
+    currentValue: { show: true, mode: 'pointer', color: palette.text },
     slices: {
       fill: { opacity: 0.85 },
       border: { show: true, width: 1.5, opacity: 1 },
       reveal: { start: 'afterPour', duration: 600, ease: 'easeOutCubic', grainsTo: 0.12 },
     },
-    fps: { position: 'off', color: '#cdd3de' },
+    fps: { position: 'off', color: palette.text },
   };
 }
 
