@@ -1,3 +1,9 @@
+// Reuse the bar chart's chrome infrastructure verbatim (axes/legend/margins/fps).
+import { axisMargins, marginsToPlotRect, resolveChrome } from '../../core/chrome/chrome.js';
+import type { ResolvedChrome } from '../../core/chrome/chrome.js';
+import { FpsMeter, type ResolvedFps, resolveFps } from '../../core/chrome/fps.js';
+import { Legend, type LegendEntry } from '../../core/chrome/legend.js';
+import { Title } from '../../core/chrome/title.js';
 import { appendPoints, patchPoints, removePoints, seriesKeys } from '../../core/data/dataset.js';
 import type { DataSet, Point, PointPatch, PointRef } from '../../core/data/types.js';
 import { ease, scatterStarts } from '../../core/particles/anim.js';
@@ -16,11 +22,6 @@ import {
   type ViewTransform,
   resolvePanZoom,
 } from '../../core/view/types.js';
-// Reuse the bar chart's chrome infrastructure verbatim (axes/legend/margins/fps).
-import { axisMargins, marginsToPlotRect, resolveChrome } from '../bar/chrome.js';
-import type { ResolvedChrome } from '../bar/chrome.js';
-import { FpsMeter, type ResolvedFps, resolveFps } from '../bar/fps.js';
-import { Legend, type LegendEntry } from '../bar/legend.js';
 import { type AxisModel, buildAxes } from './axis.js';
 import { type LineLayout, layoutLine } from './layout.js';
 import { type ResolvedLineStyle, resolveLineStyle, revealFactor } from './lineStyle.js';
@@ -158,6 +159,7 @@ export class LineChart implements PanZoomable {
   private overlayCanvas: HTMLCanvasElement | null = null;
   private overlay: Overlay | null = null;
   private legend: Legend | null = null;
+  private title: Title | null = null;
   private fpsCfg: ResolvedFps;
   private fps: FpsMeter | null = null;
   private pzCfg: ResolvedPanZoom;
@@ -248,6 +250,7 @@ export class LineChart implements PanZoomable {
     this.overlay = new Overlay(oc);
 
     if (this.chrome.legend.show) this.legend = new Legend(this.el, this.chrome.legend);
+    if (this.chrome.title.show) this.title = new Title(this.el, this.chrome.title);
   }
 
   whenReady(): Promise<void> {
@@ -320,6 +323,9 @@ export class LineChart implements PanZoomable {
     const m = axisMargins(this.chrome);
     if (this.legend && this.chrome.legend.show) {
       m[this.chrome.legend.position] += this.legend.measure() + 6;
+    }
+    if (this.title && this.chrome.title.show) {
+      m[this.chrome.title.position] += this.title.measure() + 4;
     }
     this.plotRect = marginsToPlotRect(m, this.canvas.width, this.canvas.height, this.dpr);
     this.positionZoomControls();
@@ -894,6 +900,7 @@ export class LineChart implements PanZoomable {
     this.renderer?.dispose();
     this.emitter.clear();
     this.legend?.dispose();
+    this.title?.dispose();
     this.fps?.dispose();
     this.zoomControls?.dispose();
     this.overlay?.dispose();

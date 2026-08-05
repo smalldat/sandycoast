@@ -1,93 +1,26 @@
+import type { RevealConfig } from '../../core/chrome/reveal.js';
+import type {
+  AxisConfig,
+  CurrentValueConfig as CurrentValueConfigOf,
+  FpsConfig,
+  FpsPosition,
+  HoverEffect,
+  LegendConfig,
+  Side,
+  TitleConfig,
+} from '../../core/chrome/types.js';
 import type { DataSet, Scalar } from '../../core/data/types.js';
 import type { Easing } from '../../core/particles/anim.js';
 import type { BackendPreference } from '../../core/render/pick.js';
 import type { GrainShape, RGBA } from '../../core/render/types.js';
 import type { PanZoomConfig } from '../../core/view/types.js';
 
-export type HoverEffect = 'highlight' | 'jitter' | 'opacity';
+// Chrome config is shared by every visual and lives in `core`; re-exported here
+// so the bar chart's public surface is unchanged.
+export type { AxisConfig, FpsConfig, FpsPosition, HoverEffect, LegendConfig, Side, TitleConfig };
 
-/** Edge of the plot area. */
-export type Side = 'left' | 'right' | 'top' | 'bottom';
-
-export interface AxisConfig {
-  /** Draw this axis. Default false. */
-  show?: boolean;
-  /** Approx tick count (number), or `false` for an axis line with no ticks. */
-  ticks?: number | false;
-  /** Format a tick value into its label. Default: compact number / locale date. */
-  tickFormat?: (v: Scalar) => string;
-  /** Axis title, drawn beside the ticks. */
-  label?: string;
-  /** Extend tick marks across the plot as grid lines. Default false. */
-  gridLines?: boolean;
-  /** Line/label color (CSS). Default a subdued gray. */
-  color?: string;
-  /** Tick label font size in px. Default 11. */
-  fontPx?: number;
-  /** Tick/title font-family stack (CSS). Default 'system-ui, sans-serif'. */
-  fontFamily?: string;
-  /** Tick/title font weight (CSS: e.g. 'bold', 600). Default 'normal'. */
-  fontWeight?: string | number;
-  /**
-   * Reading direction of the rotated axis title. Y-axis only (ignored on X).
-   * 'up' reads bottom-to-top (default), 'down' reads top-to-bottom.
-   */
-  titleDirection?: 'up' | 'down';
-}
-
-export interface LegendConfig {
-  /** Show the legend. Default false. */
-  show?: boolean;
-  /** Which edge to place it on. Default 'bottom'. */
-  position?: Side;
-  /** Cross-axis alignment. Default 'center'. */
-  align?: 'start' | 'center' | 'end';
-  /** Swatch shape. Default follows the grain shape. */
-  swatch?: 'disc' | 'square';
-}
-
-export interface CurrentValueConfig {
-  /** Show the readout. Default false. */
-  show?: boolean;
-  /**
-   * Where the readout box sits. `'pointer'` follows the cursor; a Side pins it to
-   * that edge; `'axis'` (**On axes**) drops the floating box and instead shows the
-   * value(s) directly on the axes — a highlighted marker beside the Y axis and/or
-   * below the X axis. Default `'pointer'`.
-   */
-  mode?: 'pointer' | 'axis' | Side;
-  /** Format the hovered bar into a readout string. */
-  format?: (bar: BarMeta) => string;
-  /**
-   * Cursor guide line(s) drawn to the hovered point. `'y'` = horizontal line to
-   * the value (Y) axis, `'x'` = vertical line to the category (X) axis, `'both'`
-   * = crosshair, `'none'` = no line. When omitted, falls back to
-   * {@link showGuide} (`true` → `'y'`, `false` → `'none'`). Default `'y'`.
-   */
-  guide?: 'none' | 'x' | 'y' | 'both';
-  /** Legacy: draw a horizontal guide line to the value axis. Superseded by {@link guide}. Default true. */
-  showGuide?: boolean;
-  /**
-   * When a guide line is on, highlight the corresponding axis with a value
-   * marker (a filled tick label at the cursor's row/column). Default true.
-   */
-  markers?: boolean;
-  /** Text/line color (CSS). */
-  color?: string;
-}
-
-/** Where to pin the FPS meter, or `'off'` to hide it. */
-export type FpsPosition = Side | 'off';
-
-export interface FpsConfig {
-  /**
-   * Edge/corner to pin the meter to, or `'off'`. `left`/`right` sit in the top
-   * corner; `top`/`bottom` are centered on that edge. Default `'off'`.
-   */
-  position?: FpsPosition;
-  /** Text color (CSS). Default a subdued light gray. */
-  color?: string;
-}
+/** Hover readout config, with `format` typed against {@link BarMeta}. */
+export type CurrentValueConfig = CurrentValueConfigOf<BarMeta>;
 
 /**
  * Solid fill + border drawn per bar, revealed as the sand particles fade out.
@@ -112,20 +45,7 @@ export interface BarStyleConfig {
     opacity?: number;
   };
   /** Timing of the particle→solid crossfade. */
-  reveal?: {
-    /**
-     * When the fade begins. `'afterPour'` = once pour+settle finishes
-     * (animation duration + stagger). A number = absolute seconds from start.
-     * Default `'afterPour'`.
-     */
-    start?: 'afterPour' | number;
-    /** Fade window length in ms. Default 500. */
-    duration?: number;
-    /** Fade easing. Default 'easeOutCubic'. */
-    ease?: Easing;
-    /** Grain end-opacity 0..1 (0 = disappear). Default 0. */
-    grainsTo?: number;
-  };
+  reveal?: RevealConfig;
 }
 
 export interface BarChartConfig {
@@ -208,6 +128,8 @@ export interface BarChartConfig {
   };
   /** Positionable series legend; off by default. */
   legend?: LegendConfig;
+  /** Chart title; shares the legend's placement vocabulary. Off by default. */
+  title?: TitleConfig;
   /** Current-value readout tied to hover; off by default. */
   currentValue?: CurrentValueConfig;
   /** Solid fill + border per bar, revealed as particles fade; off by default. */

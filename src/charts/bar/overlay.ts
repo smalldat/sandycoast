@@ -1,9 +1,9 @@
+import type { ResolvedAxis, ResolvedChrome } from '../../core/chrome/chrome.js';
 import type { Scalar } from '../../core/data/types.js';
 import type { RGBA } from '../../core/render/types.js';
 import { cssRGBA } from '../../core/util/color.js';
 import { type AxisModel, formatNumber } from './axis.js';
 import type { ResolvedBarStyle } from './barStyle.js';
-import type { ResolvedAxis, ResolvedChrome } from './chrome.js';
 import type { BarMeta } from './types.js';
 
 /** Compact label for any scalar (number / date / string) used on axis markers. */
@@ -555,7 +555,10 @@ export class Overlay {
     // In 'axis' mode the readout lives on the axes; skip the floating box.
     if (onAxis) return;
 
-    const text = (cfg.format ?? defaultFormat)(bar);
+    // `currentValue.format` is stored contravariantly by chrome (which knows
+    // nothing about a chart's meta); re-type it to this chart's own meta.
+    const fmt = cfg.format as unknown as ((m: BarMeta) => string) | undefined;
+    const text = (fmt ?? defaultFormat)(bar);
     const fontPx = 12 * dpr;
     ctx.font = `${fontPx}px system-ui, sans-serif`;
     const padX = 6 * dpr;

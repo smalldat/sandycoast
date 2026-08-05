@@ -161,6 +161,111 @@ function clamp01(v: number): number {
 }
 
 /**
+ * An annular sector (pie/donut slice) in normalized layout space `[0,1]`,
+ * origin bottom-left, +y up. Angles are radians measured **clockwise from the
+ * +y axis** (12 o'clock), so a point at angle `a`, radius `r` sits at
+ * `(cx + sin(a) * r, cy + cos(a) * r)`.
+ *
+ * Because the layout box is mapped onto a **square** rect by the pie chart, a
+ * constant radius is a true circle on screen regardless of the host's aspect.
+ */
+export interface Wedge {
+  /** Center, layout units (the pie chart uses `0.5, 0.5`). */
+  cx: number;
+  cy: number;
+  /** Start angle, radians clockwise from 12 o'clock. */
+  a0: number;
+  /** End angle (`>= a0`), radians clockwise from 12 o'clock. */
+  a1: number;
+  /** Hole radius (0 for a full pie), layout units. */
+  rInner: number;
+  /** Outer radius, layout units. */
+  rOuter: number;
+  colorIdx: number;
+  /** Slice id for hover hit-testing / highlight (shares the grain `barId` slot). */
+  barId: number;
+}
+
+/** Area of an annular sector, used to weight its share of the grain budget. */
+export function wedgeArea(w: Wedge): number {
+  const sweep = Math.max(0, w.a1 - w.a0);
+  const rOut = Math.max(0, w.rOuter);
+  const rIn = Math.min(Math.max(0, w.rInner), rOut);
+  return 0.5 * sweep * (rOut * rOut - rIn * rIn);
+}
+
+/**
+ * Grains per slice: the density-driven {@link grainBudget} shared out in
+ * proportion to sector area, so a donut's hole doesn't get sand and adding
+ * slices subdivides the same budget. Mirrors {@link grainCounts} for pies.
+ */
+export function wedgeGrainCounts(wedges: Wedge[], opts: PackOptions): number[] {
+  return distribute(grainBudget(opts), wedges.map(wedgeArea));
+}
+
+/**
+ * Pack grains into each annular sector on a jittered polar grid and write target
+ * positions/attributes into `out` starting at `offset`. Returns grains written.
+ *
+ * The radial coordinate is sampled as `r = sqrt(rIn² + v (rOut² - rIn²))` rather
+ * than linearly in `v`: area grows with `r²`, so a linear ramp would bunch grains
+ * against the hole and leave the rim sparse.
+ */
+export function packWedges(
+  wedges: Wedge[],
+  counts: number[],
+  out: PackTarget,
+  opts: PackOptions,
+  offset = 0,
+): number {
+  const jitter = opts.jitter ?? 0.6;
+  const rng = mulberry32(opts.seed ?? 1);
+  let w = offset;
+
+  for (let wi = 0; wi < wedges.length; wi++) {
+    const wedge = wedges[wi]!;
+    const n = counts[wi]!;
+    const sweep = Math.max(0, wedge.a1 - wedge.a0);
+    const rOut = Math.max(0, wedge.rOuter);
+    const rIn = Math.min(Math.max(0, wedge.rInner), rOut);
+    if (n <= 0 || sweep <= 0 || rOut <= 0) continue;
+
+    // Grid dims follow the sector's on-screen proportions: arc length at the
+    // mid radius across, ring thickness down. Keeps cells roughly square.
+    const arc = sweep * ((rIn + rOut) / 2);
+    const band = rOut - rIn;
+    const aspect = band > 0 ? arc / band : n;
+    let cols = Math.max(1, Math.round(Math.sqrt(n * aspect)));
+    const rows = Math.max(1, Math.ceil(n / cols));
+    cols = Math.max(1, Math.ceil(n / rows));
+
+    const r2In = rIn * rIn;
+    const r2Span = rOut * rOut - r2In;
+
+    let placed = 0;
+    for (let r = 0; r < rows && placed < n; r++) {
+      for (let c = 0; c < cols && placed < n; c++) {
+        const ja = (rng() - 0.5) * jitter;
+        const jr = (rng() - 0.5) * jitter;
+        const u = clamp01((c + 0.5 + ja) / cols);
+        const v = clamp01((r + 0.5 + jr) / rows);
+        const a = wedge.a0 + u * sweep;
+        const rad = Math.sqrt(r2In + v * r2Span);
+
+        out.targetX[w] = clamp01(wedge.cx + Math.sin(a) * rad);
+        out.targetY[w] = clamp01(wedge.cy + Math.cos(a) * rad);
+        out.colorIdx[w] = wedge.colorIdx;
+        out.barId[w] = wedge.barId;
+        out.seed[w] = rng();
+        w++;
+        placed++;
+      }
+    }
+  }
+  return w - offset;
+}
+
+/**
  * A straight segment of a line chart's path in normalized layout space `[0,1]`,
  * origin bottom-left, +y up. Grains are scattered in a thin ribbon along it.
  */

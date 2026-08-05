@@ -1,20 +1,23 @@
+// Chrome config is shared by every visual and lives in `core`.
+import type {
+  AxisConfig,
+  CurrentValueConfig as CurrentValueConfigOf,
+  FpsConfig,
+  HoverEffect,
+  LegendConfig,
+  Side,
+  TitleConfig,
+} from '../../core/chrome/types.js';
 import type { DataSet, Scalar } from '../../core/data/types.js';
 import type { Easing } from '../../core/particles/anim.js';
 import type { BackendPreference } from '../../core/render/pick.js';
 import type { GrainShape, RGBA } from '../../core/render/types.js';
 import type { PanZoomConfig } from '../../core/view/types.js';
-// Chrome config is identical to the bar chart's — the line chart reuses the
-// exact same axis / legend / current-value / fps / hover interfaces.
-import type {
-  AxisConfig,
-  CurrentValueConfig,
-  FpsConfig,
-  HoverEffect,
-  LegendConfig,
-  Side,
-} from '../bar/types.js';
 
-export type { AxisConfig, CurrentValueConfig, FpsConfig, HoverEffect, LegendConfig, Side };
+export type { AxisConfig, FpsConfig, HoverEffect, LegendConfig, Side, TitleConfig };
+
+/** Hover readout config, with `format` typed against {@link LineMeta}. */
+export type CurrentValueConfig = CurrentValueConfigOf<LineMeta>;
 
 /** How the connecting line is drawn once the sand resolves. */
 export type LineShape = 'none' | 'straight' | 'spline';
@@ -156,6 +159,8 @@ export interface LineChartConfig {
   };
   /** Positionable series legend; off by default. */
   legend?: LegendConfig;
+  /** Chart title; shares the legend's placement vocabulary. Off by default. */
+  title?: TitleConfig;
   /** Current-value readout tied to hover; off by default. */
   currentValue?: CurrentValueConfig;
   /** Solid line + area fill per series, revealed as particles fade; off by default. */

@@ -1,0 +1,2 @@
+- [Component isolation](component-isolation.md) — charts never import each other; shared chrome lives in src/core.
+- [SOLID principles](solid-principles.md) — mandatory for all code; what each letter means in this codebase.
