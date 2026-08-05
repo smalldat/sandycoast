@@ -16,10 +16,60 @@ export type {
   LegendConfig,
   Side,
 } from './charts/bar/types.js';
-export { resolveBarStyle, revealFactor } from './charts/bar/barStyle.js';
+export { resolveBarStyle } from './charts/bar/barStyle.js';
 export type { ResolvedBarStyle } from './charts/bar/barStyle.js';
-export { FpsMeter, resolveFps } from './charts/bar/fps.js';
-export type { ResolvedFps } from './charts/bar/fps.js';
+
+// Pie / donut chart (one series at a time, picked by the series slider)
+export { PieChart } from './charts/pie/PieChart.js';
+export { hitSlice, layoutPie } from './charts/pie/layout.js';
+export type { PieLayout, PieLayoutOptions } from './charts/pie/layout.js';
+export { resolvePieStyle } from './charts/pie/pieStyle.js';
+export type { ResolvedPieStyle, ResolvedSliceBorder } from './charts/pie/pieStyle.js';
+export {
+  fractionAtPx,
+  indexAt,
+  resolveSlider,
+  sliderBandPx,
+  sliderTicks,
+  sliderTrack,
+  trackPos,
+} from './charts/pie/slider.js';
+export type { ResolvedSlider, SliderTrack } from './charts/pie/slider.js';
+export { DEFAULT_MAX_SERIES, DEFAULT_MAX_SLICES } from './charts/pie/types.js';
+export type {
+  PieChartConfig,
+  PieStyleConfig,
+  SeriesChangePayload,
+  SliceMeta,
+  SliderConfig,
+  TitleConfig,
+} from './charts/pie/types.js';
+
+// Shared chrome (axes, legend, title, current value, FPS) — used by every chart
+export { FpsMeter, resolveFps } from './core/chrome/fps.js';
+export type { ResolvedFps } from './core/chrome/fps.js';
+export { Legend } from './core/chrome/legend.js';
+export type { LegendEntry } from './core/chrome/legend.js';
+export { Title } from './core/chrome/title.js';
+export {
+  axisMargins,
+  marginsToPlotRect,
+  resolveChrome,
+} from './core/chrome/chrome.js';
+export type {
+  ChromeInput,
+  Margins,
+  ResolvedAxis,
+  ResolvedChrome,
+  ResolvedCurrentValue,
+  ResolvedLegend,
+  ResolvedTitle,
+} from './core/chrome/chrome.js';
+export { formatNumber, formatValue } from './core/chrome/format.js';
+export type { AxisTick } from './core/chrome/format.js';
+export { resolveReveal, revealFactor } from './core/chrome/reveal.js';
+export type { ResolvedFill, ResolvedReveal, RevealConfig } from './core/chrome/reveal.js';
+export { PLOT_HEIGHT } from './core/layout/plot.js';
 
 // Line chart (mirrors the bar chart's config surface; line style in place of border)
 export { LineChart } from './charts/line/LineChart.js';

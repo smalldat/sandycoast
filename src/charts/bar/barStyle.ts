@@ -1,22 +1,15 @@
-import { type Easing, ease } from '../../core/particles/anim.js';
+import {
+  type ResolvedFill,
+  type ResolvedReveal,
+  resolveReveal,
+  revealFactor,
+} from '../../core/chrome/reveal.js';
 import type { BarChartConfig } from './types.js';
 
-/**
- * Reveal factor in [0,1] at time `now` (seconds). 0 before `start`, eased ramp
- * across `duration` seconds, 1 after. Drives both the grain fade-out and the
- * fill/border fade-in. `duration <= 0` snaps to a step at `start`.
- */
-export function revealFactor(now: number, start: number, duration: number, easing: Easing): number {
-  if (now <= start) return 0;
-  if (duration <= 0) return 1;
-  const p = (now - start) / duration;
-  return ease(p, easing);
-}
-
-export interface ResolvedFill {
-  on: boolean;
-  opacity: number;
-}
+// The reveal ramp and the fill/reveal shapes are shared by every visual; they
+// live in `core` and are re-exported here so the public API is unchanged.
+export { revealFactor };
+export type { ResolvedFill, ResolvedReveal };
 
 export interface ResolvedBorder {
   any: boolean;
@@ -26,16 +19,6 @@ export interface ResolvedBorder {
   bottom: boolean;
   width: number;
   opacity: number;
-}
-
-export interface ResolvedReveal {
-  /** Fade start: 'afterPour' or absolute seconds from animation start. */
-  start: 'afterPour' | number;
-  /** Fade window in seconds. */
-  duration: number;
-  ease: Easing;
-  /** Grain end-opacity in [0,1]. */
-  grainsTo: number;
 }
 
 export interface ResolvedBarStyle {
@@ -73,13 +56,5 @@ export function resolveBarStyle(cfg: BarChartConfig): ResolvedBarStyle {
     opacity: bd?.opacity ?? 1,
   };
 
-  const rv = b?.reveal;
-  const reveal: ResolvedReveal = {
-    start: rv?.start ?? 'afterPour',
-    duration: (rv?.duration ?? 500) / 1000,
-    ease: rv?.ease ?? 'easeOutCubic',
-    grainsTo: rv?.grainsTo ?? 0,
-  };
-
-  return { enabled: fill.on || border.any, fill, border, reveal };
+  return { enabled: fill.on || border.any, fill, border, reveal: resolveReveal(b?.reveal) };
 }

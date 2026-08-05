@@ -1,10 +1,10 @@
 import { resolveTypes, seriesKeys, toNumeric, validate } from '../../core/data/dataset.js';
 import type { DataSet, Scalar } from '../../core/data/types.js';
+// Share the exact vertical headroom the bar chart uses so the two align.
+import { PLOT_HEIGHT } from '../../core/layout/plot.js';
 import type { LineSeg } from '../../core/particles/pack.js';
 import type { RGBA } from '../../core/render/types.js';
 import { LinearScale } from '../../core/scales/linear.js';
-// Share the exact vertical headroom the bar chart uses so the two align.
-import { PLOT_HEIGHT } from '../bar/layout.js';
 import type { LineMeta } from './types.js';
 
 export { PLOT_HEIGHT };

@@ -1,7 +1,8 @@
+import type { ResolvedAxis, ResolvedChrome } from '../../core/chrome/chrome.js';
+import { formatNumber } from '../../core/chrome/format.js';
 import type { Scalar } from '../../core/data/types.js';
 import { cssRGBA } from '../../core/util/color.js';
-import { type AxisModel, formatNumber } from '../bar/axis.js';
-import type { ResolvedAxis, ResolvedChrome } from '../bar/chrome.js';
+import type { AxisModel } from './axis.js';
 import type { SeriesPath } from './layout.js';
 import type { ResolvedLineStyle } from './lineStyle.js';
 import type { LineMeta } from './types.js';

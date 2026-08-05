@@ -1,34 +1,15 @@
-import type { Scalar } from '../../core/data/types.js';
-import type { ResolvedAxis } from './chrome.js';
+import type { ResolvedAxis } from '../../core/chrome/chrome.js';
+import { type AxisTick, formatNumber, formatValue } from '../../core/chrome/format.js';
 import { type BarLayout, PLOT_HEIGHT } from './layout.js';
 
-/** One rendered tick: its value, layout position [0,1], and formatted label. */
-export interface AxisTick {
-  value: Scalar;
-  /** Layout position along the axis, [0,1]. */
-  pos: number;
-  label: string;
-}
+// Tick shape and number formatting are shared by every visual (they live in
+// `core`); re-exported here so the bar chart's public surface is unchanged.
+export { formatNumber };
+export type { AxisTick };
 
 export interface AxisModel {
   x: AxisTick[];
   y: AxisTick[];
-}
-
-/** Compact number format: trims trailing zeros, keeps big/small readable. */
-export function formatNumber(v: number): string {
-  if (!Number.isFinite(v)) return String(v);
-  if (v === 0) return '0';
-  const abs = Math.abs(v);
-  if (abs >= 1000) return v.toLocaleString('en-US');
-  if (abs < 0.001) return v.toExponential(1);
-  return String(Math.round(v * 1000) / 1000);
-}
-
-function formatValue(v: Scalar): string {
-  if (typeof v === 'number') return formatNumber(v);
-  if (v instanceof Date) return v.toLocaleDateString('en-US');
-  return String(v);
 }
 
 /**

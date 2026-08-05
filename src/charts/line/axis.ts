@@ -1,15 +1,14 @@
-import type { Scalar } from '../../core/data/types.js';
-// Tick types + number formatting are shared with the bar chart.
-import { type AxisModel, type AxisTick, formatNumber } from '../bar/axis.js';
-import type { ResolvedAxis } from '../bar/chrome.js';
+import type { ResolvedAxis } from '../../core/chrome/chrome.js';
+// Tick shape + label formatting are shared by every visual (they live in core).
+import { type AxisTick, formatNumber, formatValue } from '../../core/chrome/format.js';
 import { type LineLayout, PLOT_HEIGHT } from './layout.js';
 
-export type { AxisModel, AxisTick };
+export { formatNumber };
+export type { AxisTick };
 
-function formatValue(v: Scalar): string {
-  if (typeof v === 'number') return formatNumber(v);
-  if (v instanceof Date) return v.toLocaleDateString('en-US');
-  return String(v);
+export interface AxisModel {
+  x: AxisTick[];
+  y: AxisTick[];
 }
 
 /**

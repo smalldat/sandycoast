@@ -1,4 +1,4 @@
-import type { RGBA } from '../../core/render/types.js';
+import type { RGBA } from '../render/types.js';
 import type { ResolvedLegend } from './chrome.js';
 
 export interface LegendEntry {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveFps } from './fps.js';
+import { resolveFps } from '../../core/chrome/fps.js';
 import type { BarChartConfig } from './types.js';
 
 const base: BarChartConfig = { data: { points: [] } };

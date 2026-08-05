@@ -1,6 +1,6 @@
-import type { Easing } from '../../core/particles/anim.js';
 // Reuse the bar chart's reveal-ramp math verbatim so line/bar reveals match.
-import { revealFactor } from '../bar/barStyle.js';
+import { revealFactor } from '../../core/chrome/reveal.js';
+import type { Easing } from '../../core/particles/anim.js';
 import type { LineChartConfig, LineShape } from './types.js';
 
 export { revealFactor };

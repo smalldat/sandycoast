@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { ResolvedAxis } from '../../core/chrome/chrome.js';
 import { parseColor } from '../../core/util/color.js';
 import { buildAxes, formatNumber } from './axis.js';
-import type { ResolvedAxis } from './chrome.js';
 import { PLOT_HEIGHT, layoutBars } from './layout.js';
 
 const palette = ['#ff0000', '#00ff00'].map(parseColor);

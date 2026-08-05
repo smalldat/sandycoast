@@ -1,15 +1,17 @@
-import type { Scalar } from '../../core/data/types.js';
-import type { GrainShape } from '../../core/render/types.js';
-import type { AxisConfig, BarMeta, CurrentValueConfig, LegendConfig, Side } from './types.js';
+import type { Scalar } from '../data/types.js';
+import type { GrainShape } from '../render/types.js';
+import type { AxisConfig, CurrentValueConfig, LegendConfig, Side, TitleConfig } from './types.js';
 
 /**
- * Minimal config surface {@link resolveChrome} reads. Both {@link BarChartConfig}
- * and the line chart's config satisfy it, so chrome is shared across charts.
+ * Minimal config surface {@link resolveChrome} reads. Every chart's config
+ * satisfies it, so chrome is resolved the same way for all of them without any
+ * chart depending on another.
  */
 export interface ChromeInput {
   axes?: { x?: AxisConfig; y?: AxisConfig };
   legend?: LegendConfig;
-  currentValue?: CurrentValueConfig;
+  title?: TitleConfig;
+  currentValue?: CurrentValueConfig<never>;
   grain?: { shape?: GrainShape };
 }
 
@@ -34,10 +36,27 @@ export interface ResolvedLegend {
   swatch: 'disc' | 'square';
 }
 
+export interface ResolvedTitle {
+  /** True when a non-empty title should be mounted. */
+  show: boolean;
+  text: string;
+  position: Side;
+  align: 'start' | 'center' | 'end';
+  color: string;
+  fontPx: number;
+  fontFamily: string;
+  fontWeight: string | number;
+}
+
 export interface ResolvedCurrentValue {
   show: boolean;
   mode: 'pointer' | 'axis' | Side;
-  format: ((bar: BarMeta) => string) | undefined;
+  /**
+   * Caller's formatter. It is typed against the *chart's* meta, which chrome
+   * knows nothing about, so it is stored contravariantly (`never`) and each
+   * chart's overlay re-types it to its own meta before calling.
+   */
+  format: ((item: never) => string) | undefined;
   /** Vertical guide line to the X axis. */
   guideX: boolean;
   /** Horizontal guide line to the Y axis. */
@@ -51,6 +70,7 @@ export interface ResolvedChrome {
   x: ResolvedAxis;
   y: ResolvedAxis;
   legend: ResolvedLegend;
+  title: ResolvedTitle;
   currentValue: ResolvedCurrentValue;
   /** True when any chrome is active (skip overlay/margins entirely if false). */
   any: boolean;
@@ -59,6 +79,7 @@ export interface ResolvedChrome {
 /** Default subdued color for axis lines/labels (works on dark backgrounds). */
 const AXIS_COLOR = 'rgba(205,211,222,0.55)';
 const VALUE_COLOR = 'rgba(232,236,242,0.95)';
+const TITLE_COLOR = 'rgba(232,236,242,0.95)';
 
 function resolveAxis(cfg: AxisConfig | undefined): ResolvedAxis {
   return {
@@ -84,7 +105,19 @@ export function resolveChrome(cfg: ChromeInput): ResolvedChrome {
     align: cfg.legend?.align ?? 'center',
     swatch: cfg.legend?.swatch ?? (cfg.grain?.shape === 'quad' ? 'square' : 'disc'),
   };
-  const cv: CurrentValueConfig | undefined = cfg.currentValue;
+  const t = cfg.title;
+  const text = t?.text ?? '';
+  const title: ResolvedTitle = {
+    show: text.length > 0,
+    text,
+    position: t?.position ?? 'top',
+    align: t?.align ?? 'center',
+    color: t?.color ?? TITLE_COLOR,
+    fontPx: t?.fontPx ?? 14,
+    fontFamily: t?.fontFamily ?? 'system-ui, sans-serif',
+    fontWeight: t?.fontWeight ?? 600,
+  };
+  const cv: CurrentValueConfig<never> | undefined = cfg.currentValue;
   // `guide` supersedes the legacy `showGuide` boolean (true → 'y', false → 'none').
   const guide = cv?.guide ?? ((cv?.showGuide ?? true) ? 'y' : 'none');
   const currentValue: ResolvedCurrentValue = {
@@ -96,8 +129,8 @@ export function resolveChrome(cfg: ChromeInput): ResolvedChrome {
     markers: cv?.markers ?? true,
     color: cv?.color ?? VALUE_COLOR,
   };
-  const any = x.show || y.show || legend.show || currentValue.show;
-  return { x, y, legend, currentValue, any };
+  const any = x.show || y.show || legend.show || title.show || currentValue.show;
+  return { x, y, legend, title, currentValue, any };
 }
 
 /** Plot margins in CSS px, before the legend's measured extent is folded in. */
