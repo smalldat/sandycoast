@@ -1,68 +1,123 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark" data-layout="tb">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>smalldat SandyCoast — demo</title>
     <style>
-      :root { color-scheme: dark; }
+      /* Every chrome colour goes through a variable so the theme switch is a
+         single attribute flip on <html>. Dark is the default so the page paints
+         correctly before the module runs. */
+      :root, :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #0d1017;
+        --fg: #cdd3de;
+        --line: #1e2430;
+        --surface: #1b2230;
+        --surface-hover: #232c3d;
+        --border: #2a3242;
+        --sunken: #10141c;
+      }
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #f7f8fa;
+        --fg: #202634;
+        --line: #dde1e9;
+        --surface: #ffffff;
+        --surface-hover: #eef1f6;
+        --border: #c9d0dd;
+        --sunken: #ffffff;
+      }
       * { box-sizing: border-box; }
       body {
-        margin: 0; font-family: system-ui, sans-serif; background: #0d1017; color: #cdd3de;
+        margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg);
         display: grid; grid-template-columns: 180px 1fr; grid-template-rows: auto 1fr auto;
         grid-template-areas: "head head" "nav main" "panel panel"; height: 100vh;
       }
       header {
-        grid-area: head; padding: 12px 20px; border-bottom: 1px solid #1e2430;
+        grid-area: head; padding: 12px 20px; border-bottom: 1px solid var(--line);
         display: flex; align-items: center; justify-content: space-between; gap: 16px;
       }
       h1 { font-size: 15px; margin: 0; font-weight: 600; }
-      .head-links { display: flex; gap: 8px; font-size: 13px; }
+      .head-links { display: flex; gap: 8px; font-size: 13px; align-items: center; }
       .head-links a {
-        color: #cdd3de; text-decoration: none; border: 1px solid #2a3242;
-        border-radius: 6px; padding: 5px 12px; background: #1b2230;
+        color: var(--fg); text-decoration: none; border: 1px solid var(--border);
+        border-radius: 6px; padding: 5px 12px; background: var(--surface);
       }
-      .head-links a:hover { background: #232c3d; }
+      .head-links a:hover { background: var(--surface-hover); }
+
+      /* Segmented two-option switches (theme, layout) in the header. */
+      .seg {
+        display: inline-flex; border: 1px solid var(--border); border-radius: 6px;
+        overflow: hidden; background: var(--surface);
+      }
+      .seg-btn {
+        background: transparent; color: var(--fg); border: 0; margin: 0;
+        padding: 5px 10px; font-size: 13px; line-height: 1.2; cursor: pointer;
+        opacity: 0.55;
+      }
+      .seg-btn:hover { background: var(--surface-hover); opacity: 0.85; }
+      .seg-btn.active { background: var(--surface-hover); opacity: 1; }
 
       /* Left component nav */
-      #nav { grid-area: nav; border-right: 1px solid #1e2430; padding: 12px 8px; overflow-y: auto; }
+      #nav { grid-area: nav; border-right: 1px solid var(--line); padding: 12px 8px; overflow-y: auto; }
       .nav-item {
-        display: block; width: 100%; text-align: left; background: transparent; color: #cdd3de;
+        display: block; width: 100%; text-align: left; background: transparent; color: var(--fg);
         border: 1px solid transparent; border-radius: 6px; padding: 8px 10px; cursor: pointer;
         font-size: 13px; margin-bottom: 4px;
       }
-      .nav-item:hover:not(.disabled) { background: #1b2230; }
-      .nav-item.active { background: #232c3d; border-color: #2a3242; }
+      .nav-item:hover:not(.disabled) { background: var(--surface); }
+      .nav-item.active { background: var(--surface-hover); border-color: var(--border); }
       .nav-item.disabled { opacity: 0.35; cursor: default; }
 
       /* Chart column */
       #host { grid-area: main; padding: 16px 20px; overflow: auto; }
+      /* `resize: both` gives the box a native bottom-right drag handle (it
+         needs a non-visible overflow to appear). The chart inside observes its
+         container, so it re-renders at the new size on its own; main.ts only
+         persists the result. `max-width: 100%` keeps a wide dragged size from
+         overflowing a narrower column after a layout switch. */
       #chart {
-        width: 100%; height: 460px;
-        border: 1px solid #1e2430; border-radius: 10px; background: #10141c;
+        position: relative;
+        width: 100%; height: 460px; max-width: 100%;
+        min-width: 240px; min-height: 180px;
+        resize: both; overflow: hidden;
+        border: 1px solid var(--line); border-radius: 10px; background: var(--sunken);
+      }
+      /* The native handle is near-invisible on these backgrounds — draw a grip
+         hint over it. Non-interactive; the real handle is underneath. */
+      #chart::after {
+        content: ''; position: absolute; right: 3px; bottom: 3px;
+        width: 11px; height: 11px; pointer-events: none; opacity: 0.5;
+        background: linear-gradient(
+          135deg,
+          transparent 42%, var(--fg) 42%, var(--fg) 52%,
+          transparent 52%, transparent 68%, var(--fg) 68%, var(--fg) 78%, transparent 78%
+        );
       }
       .toolbar { margin: 10px 0; }
       .status { font-size: 12px; opacity: 0.6; }
       .hover { font-size: 12px; opacity: 0.8; min-height: 16px; margin-top: 4px; }
       button {
-        background: #1b2230; color: #cdd3de; border: 1px solid #2a3242;
+        background: var(--surface); color: var(--fg); border: 1px solid var(--border);
         border-radius: 6px; padding: 6px 12px; cursor: pointer; margin-right: 8px; font-size: 13px;
       }
-      button:hover { background: #232c3d; }
+      button:hover { background: var(--surface-hover); }
 
-      /* Bottom controls panel: full-width. CSS grid with auto-fill tracks wraps
-         groups onto new rows instead of ever overflowing horizontally — every
-         group stays visible at any window size. Separators are per-column
-         `border-left`s, so they share the same x within a column (aligned) and
-         only relayout when the track count changes. */
+      /* Controls panel. CSS grid with auto-fill tracks wraps groups onto new
+         rows instead of ever overflowing horizontally — every group stays
+         visible at any window size, flowing left-to-right then top-to-bottom.
+         Separators are per-column `border-left`s, so they share the same x
+         within a column (aligned) and only relayout when the track count
+         changes. */
       #panel {
-        grid-area: panel; border-top: 1px solid #1e2430; padding: 16px 20px 0;
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+        grid-area: panel; padding: 16px 20px 0;
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(min(270px, 100%), 1fr));
         align-items: start; gap: 0;
-        max-height: 42vh; overflow-x: hidden; overflow-y: auto;
+        overflow-x: hidden; overflow-y: auto;
       }
       .ctl-group {
-        margin: 0; padding: 2px 22px 18px; border-left: 1px solid #1e2430;
+        margin: 0; padding: 2px 22px 18px; border-left: 1px solid var(--line);
       }
       .ctl-group h3 {
         font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
@@ -75,13 +130,32 @@
       .ctl-label { opacity: 0.85; }
       .ctl input[type="range"] { width: 130px; }
       .ctl input[type="number"], .ctl input[type="text"], .ctl select {
-        background: #10141c; color: #cdd3de; border: 1px solid #2a3242;
+        background: var(--bg); color: var(--fg); border: 1px solid var(--border);
         border-radius: 5px; padding: 3px 6px; font-size: 12px; width: 130px;
       }
-      .ctl input[type="color"] { width: 34px; height: 22px; padding: 0; border: 1px solid #2a3242; border-radius: 4px; background: none; }
+      .ctl input[type="color"] { width: 34px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: none; }
       .ctl-value { font-variant-numeric: tabular-nums; opacity: 0.6; min-width: 34px; text-align: right; }
       .ctl-checkgroup, .ctl-colorlist { display: flex; gap: 8px; align-items: center; }
       .ctl-check { display: inline-flex; gap: 4px; align-items: center; }
+
+      /* Top–bottom (default): the panel spans the full width under the chart. */
+      :root[data-layout="tb"] #panel {
+        border-top: 1px solid var(--line);
+        max-height: 42vh;
+      }
+
+      /* Left–right: the chart column takes half the viewport and the panel
+         takes the remainder as a third column, scrolling on its own. The group
+         tracks are unchanged, so groups still flow left-to-right then wrap. */
+      :root[data-layout="lr"] body {
+        grid-template-columns: 180px 50% 1fr;
+        grid-template-rows: auto 1fr;
+        grid-template-areas: "head head head" "nav main panel";
+      }
+      :root[data-layout="lr"] #panel {
+        border-left: 1px solid var(--line);
+        min-height: 0;
+      }
     </style>
   </head>
   <body>
