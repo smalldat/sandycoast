@@ -168,6 +168,13 @@ export class LineChart implements PanZoomable {
   private plotRect: [number, number, number, number] = [0, 0, 1, 1];
   private hovered: LineMeta | null = null;
   private pointerPx: { x: number; y: number } | null = null;
+  /**
+   * Bumped whenever point geometry changes (rebuild, morph tick) so the overlay
+   * knows when its cached series paths are stale.
+   */
+  private geomVersion = 0;
+  /** Set by pointer events; the RAF loop coalesces them into one redraw. */
+  private overlayDirty = false;
   private raf = 0;
   private startTime = 0;
   private lastFrameMs = 0;
@@ -367,7 +374,9 @@ export class LineChart implements PanZoomable {
       viewScale: this.view.scale,
       viewOffset: this.view.offset,
       clipToPlot: this.pzCfg.enabled,
+      geomVersion: this.geomVersion,
     });
+    this.overlayDirty = false;
   }
 
   /** Current pan/zoom transform. */
@@ -429,6 +438,7 @@ export class LineChart implements PanZoomable {
       m.pos = f.pos + (t.pos - f.pos) * e;
       m.height = f.height + (t.height - f.height) * e;
     }
+    this.geomVersion++;
     if (done) this.morph = null;
     return !done;
   }
@@ -447,6 +457,8 @@ export class LineChart implements PanZoomable {
     this.layout = layout;
     this.metas = metas;
     this.data = data;
+    this.geomVersion++;
+    this.xIndex = null;
 
     const weights = new Float32Array(metas.length);
     weights.set(this.hoverWeights.subarray(0, Math.min(metas.length, this.hoverWeights.length)));
@@ -724,8 +736,12 @@ export class LineChart implements PanZoomable {
         this.drawOverlay(now);
       } else {
         const solid = this.revealState(now).solid;
-        if (solid !== this.lastSolid || this.solidHoverActive()) this.drawOverlay(now);
+        if (solid !== this.lastSolid || this.solidHoverActive() || this.overlayDirty) {
+          this.drawOverlay(now);
+        }
       }
+    } else if (this.overlayDirty) {
+      this.drawOverlay(now);
     }
     this.raf = requestAnimationFrame(this.loop);
   };
@@ -795,7 +811,9 @@ export class LineChart implements PanZoomable {
       this.hovered = hit;
       this.emitter.emit('hover', { point: hit });
     }
-    if (this.overlay && this.chrome.currentValue.show) this.drawOverlay();
+    // Mark dirty rather than drawing here: pointer events fire faster than the
+    // display refreshes, and each redraw repaints the whole overlay.
+    if (this.overlay && this.chrome.currentValue.show) this.overlayDirty = true;
   };
 
   private onPointerLeave = (): void => {
@@ -806,20 +824,61 @@ export class LineChart implements PanZoomable {
       this.hovered = null;
       this.emitter.emit('hover', { point: null });
     }
-    if (this.overlay && this.chrome.currentValue.show) this.drawOverlay();
+    // Mark dirty rather than drawing here: pointer events fire faster than the
+    // display refreshes, and each redraw repaints the whole overlay.
+    if (this.overlay && this.chrome.currentValue.show) this.overlayDirty = true;
   };
+
+  /**
+   * Per-series meta indices sorted by `pos`, built lazily and dropped whenever
+   * the geometry is rebuilt. Lets {@link hitTest} binary-search the x window
+   * instead of scanning every point on every pointer move.
+   */
+  private xIndex: { pos: Float64Array; metas: LineMeta[] }[] | null = null;
+
+  private buildXIndex(): { pos: Float64Array; metas: LineMeta[] }[] {
+    const bySeries = new Map<number, LineMeta[]>();
+    for (const m of this.metas) {
+      const list = bySeries.get(m.seriesIndex);
+      if (list) list.push(m);
+      else bySeries.set(m.seriesIndex, [m]);
+    }
+    const index = [...bySeries.values()].map((metas) => {
+      metas.sort((a, b) => a.pos - b.pos);
+      const pos = new Float64Array(metas.length);
+      for (let i = 0; i < metas.length; i++) pos[i] = metas[i]!.pos;
+      return { pos, metas };
+    });
+    this.xIndex = index;
+    return index;
+  }
 
   /** Nearest-vertex hit-test in layout space (within a small radius). */
   private hitTest(lx: number, ly: number): LineMeta | null {
+    const R = 0.05;
     let best: LineMeta | null = null;
-    let bestD = 0.05 * 0.05; // squared radius threshold
-    for (const m of this.metas) {
-      const dxp = m.pos - lx;
-      const dyp = m.height - ly;
-      const d = dxp * dxp + dyp * dyp;
-      if (d < bestD) {
-        bestD = d;
-        best = m;
+    let bestD = R * R; // squared radius threshold
+
+    for (const series of this.xIndex ?? this.buildXIndex()) {
+      const { pos, metas } = series;
+      // Only points within ±R in x can be within R overall — binary-search that
+      // window and scan it, instead of every point in the chart.
+      let lo = 0;
+      let hi = pos.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (pos[mid]! < lx - R) lo = mid + 1;
+        else hi = mid;
+      }
+      for (let i = lo; i < pos.length && pos[i]! <= lx + R; i++) {
+        const m = metas[i]!;
+        const dxp = m.pos - lx;
+        const dyp = m.height - ly;
+        const d = dxp * dxp + dyp * dyp;
+        if (d < bestD) {
+          bestD = d;
+          best = m;
+        }
       }
     }
     return best;
@@ -837,6 +896,7 @@ export class LineChart implements PanZoomable {
     this.legend?.dispose();
     this.fps?.dispose();
     this.zoomControls?.dispose();
+    this.overlay?.dispose();
     this.overlayCanvas?.remove();
     this.canvas.remove();
   }

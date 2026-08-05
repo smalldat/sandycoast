@@ -70,7 +70,12 @@ export interface LineStyleConfig {
 
 export interface LineChartConfig {
   data: DataSet;
-  /** Grains per unit area of the line ribbon. Higher = denser sand. */
+  /**
+   * Grain budget multiplier: the chart draws `grainDensity * 20_000` grains
+   * (capped by {@link LineChartConfig.maxGrains}), independent of how many
+   * points sample the line. Segments share that budget by arc length, so the
+   * ribbon keeps constant grain density along the stroke. Higher = denser sand.
+   */
   grainDensity?: number;
   /** Global grain ceiling (default 100k). */
   maxGrains?: number;

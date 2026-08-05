@@ -130,7 +130,11 @@ export interface BarStyleConfig {
 
 export interface BarChartConfig {
   data: DataSet;
-  /** Grains per unit area of layout space. Higher = denser sand. */
+  /**
+   * Grain budget multiplier: the chart draws `grainDensity * 20_000` grains
+   * (capped by {@link BarChartConfig.maxGrains}), independent of how many bars
+   * the data has. Bars share that budget by area. Higher = denser sand.
+   */
   grainDensity?: number;
   /** Global grain ceiling (default 100k). */
   maxGrains?: number;
