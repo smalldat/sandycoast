@@ -1,2 +1,3 @@
 - [Component isolation](component-isolation.md) — charts never import each other; shared chrome lives in src/core.
 - [SOLID principles](solid-principles.md) — mandatory for all code; what each letter means in this codebase.
+- [Branch before a feature](branch-before-feature.md) — check the branch first; branch fresh off main when it holds unrelated work.
