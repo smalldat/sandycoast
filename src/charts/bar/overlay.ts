@@ -44,6 +44,22 @@ export interface OverlayState {
   viewOffset?: [number, number];
   /** Clip plot-interior chrome (bars/grid/ticks) to the plot rect (pan/zoom). */
   clipToPlot?: boolean;
+  /**
+   * Bumped by the chart whenever bar geometry or colors change (data rebuild,
+   * morph tick). Together with the view/size fields it keys the cached solid
+   * layer — see {@link Overlay.solidLayer}.
+   */
+  geomVersion: number;
+}
+
+/** Bars below this hover weight are close enough to un-hovered to skip. */
+const HOVER_EPSILON = 0.001;
+
+/** The solid bar layer pre-rasterized at gain 1, positioned in device px. */
+interface SolidLayer {
+  canvas: HTMLCanvasElement;
+  left: number;
+  top: number;
 }
 
 /** `cssRGBA` with an rgb gain (channels multiplied, then clamped) baked in. */
@@ -72,6 +88,10 @@ function defaultFormat(bar: BarMeta): string {
  */
 export class Overlay {
   private ctx: CanvasRenderingContext2D;
+  /** Pre-rasterized solid bar layer; see {@link solidLayer}. */
+  private layer: SolidLayer | null = null;
+  /** Key the layer was rasterized for; a mismatch forces a re-render. */
+  private layerKey = '';
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -81,6 +101,16 @@ export class Overlay {
 
   clear(): void {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  /** Release the cached bar bitmap (several MB on a wide chart). */
+  dispose(): void {
+    if (this.layer) {
+      this.layer.canvas.width = 0;
+      this.layer.canvas.height = 0;
+    }
+    this.layer = null;
+    this.layerKey = '';
   }
 
   draw(s: OverlayState): void {
@@ -141,6 +171,124 @@ export class Overlay {
   }
 
   /**
+   * Every bar's solid fill + border rasterized once at gain 1, re-rendered only
+   * when the geometry or the projection actually changes.
+   *
+   * A bar costs far less to draw than a line chart's area polygon, but the
+   * count is what bites: 5k points across 3 series is 15k `fillRect`s plus 15k
+   * border strokes, and the hover highlight repaints the whole overlay every
+   * frame while the pointer is inside. Since only one bar's tint changes, the
+   * other ~15k are re-rasterized for nothing.
+   *
+   * So the whole solid layer is cached and a steady-state frame is one
+   * `drawImage`; {@link drawBars} then patches just the bars whose hover weight
+   * is non-zero.
+   */
+  private solidLayer(
+    s: OverlayState,
+    dx: (lx: number) => number,
+    dy: (ly: number) => number,
+    dpr: number,
+  ): SolidLayer | null {
+    const { fill, border } = s.barStyle;
+    const key = [
+      s.geomVersion,
+      s.deviceW,
+      s.deviceH,
+      s.plotRect.join(','),
+      s.viewScale?.join(',') ?? '',
+      s.viewOffset?.join(',') ?? '',
+      dpr,
+      fill.on,
+      fill.opacity,
+      border.any,
+      border.width,
+      border.opacity,
+      `${border.top}${border.bottom}${border.left}${border.right}`,
+    ].join('|');
+    if (this.layer && this.layerKey === key) return this.layer;
+
+    const [x0, y0, x1, y1] = s.plotRect;
+    const pad = Math.ceil(border.width * dpr) + 2;
+    const left = Math.max(0, Math.floor(x0 * s.deviceW) - pad);
+    const top = Math.max(0, Math.floor((1 - y1) * s.deviceH) - pad);
+    const right = Math.min(s.deviceW, Math.ceil(x1 * s.deviceW) + pad);
+    const bottom = Math.min(s.deviceH, Math.ceil((1 - y0) * s.deviceH) + pad);
+    const lw = Math.max(1, right - left);
+    const lh = Math.max(1, bottom - top);
+
+    const canvas = this.layer?.canvas ?? document.createElement('canvas');
+    if (canvas.width !== lw) canvas.width = lw;
+    if (canvas.height !== lh) canvas.height = lh;
+    const lctx = canvas.getContext('2d');
+    if (!lctx) return null;
+    lctx.clearRect(0, 0, lw, lh);
+
+    for (const m of s.metas) {
+      this.paintBar(lctx, s, m, dx, dy, dpr, 1, 1, left, top);
+    }
+
+    this.layer = { canvas, left, top };
+    this.layerKey = key;
+    return this.layer;
+  }
+
+  /**
+   * Paint one bar's fill + border into `ctx`, with `gain` brightening the rgb
+   * channels and `alpha` scaling both layers' opacity. Coordinates are offset by
+   * `ox`/`oy` so the same routine serves the cached layer and the live canvas.
+   */
+  private paintBar(
+    ctx: CanvasRenderingContext2D,
+    s: OverlayState,
+    m: BarMeta,
+    dx: (lx: number) => number,
+    dy: (ly: number) => number,
+    dpr: number,
+    gain: number,
+    alpha: number,
+    ox: number,
+    oy: number,
+  ): void {
+    const { fill, border } = s.barStyle;
+    const L = dx(m.x0) - ox;
+    const R = dx(m.x1) - ox;
+    const B = dy(0) - oy; // bar base
+    const T = dy(m.height) - oy; // bar top
+
+    if (fill.on) {
+      ctx.fillStyle = gainedRGBA(m.color, gain, fill.opacity * alpha);
+      ctx.fillRect(L, T, R - L, B - T);
+    }
+
+    if (border.any) {
+      const lw = border.width * dpr;
+      // Half-pixel align odd widths so 1px edges stay crisp (matches spines).
+      const h = lw % 2 === 0 ? 0 : 0.5;
+      ctx.strokeStyle = gainedRGBA(m.color, gain, border.opacity * alpha);
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      if (border.top) {
+        ctx.moveTo(L, T + h);
+        ctx.lineTo(R, T + h);
+      }
+      if (border.bottom) {
+        ctx.moveTo(L, B - h);
+        ctx.lineTo(R, B - h);
+      }
+      if (border.left) {
+        ctx.moveTo(L + h, T);
+        ctx.lineTo(L + h, B);
+      }
+      if (border.right) {
+        ctx.moveTo(R - h, T);
+        ctx.lineTo(R - h, B);
+      }
+      ctx.stroke();
+    }
+  }
+
+  /**
    * Solid fill + per-side border for each bar, opacity scaled by the reveal
    * factor `s.solid`. Colors are always the bar's series color (only opacity is
    * configurable). Drawn under the axes/current-value so chrome stays legible.
@@ -152,48 +300,33 @@ export class Overlay {
     dpr: number,
   ): void {
     const ctx = this.ctx;
-    const { fill, border } = s.barStyle;
-    const solid = s.solid;
+    const layer = this.solidLayer(s, dx, dy, dpr);
+    if (!layer) return;
 
+    ctx.globalAlpha = s.solid;
+    ctx.drawImage(layer.canvas, layer.left, layer.top);
+    ctx.globalAlpha = 1;
+
+    // Repaint only the bars the hover highlight is actually tinting — one on
+    // the way in, at most one more easing back out.
+    if (s.highlightGain === 1) return;
+    const bw = Math.ceil(s.barStyle.border.width * dpr) + 2;
     for (const m of s.metas) {
+      const w = s.hoverWeights[m.barId] ?? 0;
+      if (w <= HOVER_EPSILON) continue;
       const L = dx(m.x0);
       const R = dx(m.x1);
-      const B = dy(0); // bar base
-      const T = dy(m.height); // bar top
-      // Brighten the hovered bar's fill/border by the (eased) hover weight.
-      const w = s.hoverWeights[m.barId] ?? 0;
-      const gain = w > 0 ? 1 + (s.highlightGain - 1) * w : 1;
-
-      if (fill.on) {
-        ctx.fillStyle = gainedRGBA(m.color, gain, fill.opacity * solid);
-        ctx.fillRect(L, T, R - L, B - T);
-      }
-
-      if (border.any) {
-        const lw = border.width * dpr;
-        // Half-pixel align odd widths so 1px edges stay crisp (matches spines).
-        const h = lw % 2 === 0 ? 0 : 0.5;
-        ctx.strokeStyle = gainedRGBA(m.color, gain, border.opacity * solid);
-        ctx.lineWidth = lw;
-        ctx.beginPath();
-        if (border.top) {
-          ctx.moveTo(L, T + h);
-          ctx.lineTo(R, T + h);
-        }
-        if (border.bottom) {
-          ctx.moveTo(L, B - h);
-          ctx.lineTo(R, B - h);
-        }
-        if (border.left) {
-          ctx.moveTo(L + h, T);
-          ctx.lineTo(L + h, B);
-        }
-        if (border.right) {
-          ctx.moveTo(R - h, T);
-          ctx.lineTo(R - h, B);
-        }
-        ctx.stroke();
-      }
+      const B = dy(0);
+      const T = dy(m.height);
+      ctx.save();
+      // Clip to the bar plus its border bleed so clearing the baked-in copy
+      // can't chew into a neighbouring bar, then repaint it brighter.
+      ctx.beginPath();
+      ctx.rect(L - bw, T - bw, R - L + bw * 2, B - T + bw * 2);
+      ctx.clip();
+      ctx.clearRect(L, T, R - L, B - T);
+      this.paintBar(ctx, s, m, dx, dy, dpr, 1 + (s.highlightGain - 1) * w, s.solid, 0, 0);
+      ctx.restore();
     }
   }
 
