@@ -81,16 +81,16 @@ export class Canvas2DRenderer implements Renderer {
       for (let i = 0; i < g.count; i++) {
         if (g.colorIdx[i] !== ci) continue;
         const w = weights[g.barId[i]!] ?? 0;
-        evalGrain(g, i, u.now, u.duration, u.easing, u.settleJitterAmp, tmp, vsx, vsy);
-        // Hover jitter, matching the GPU: settle-independent, and divided by the
-        // view scale so its on-screen amplitude stays constant under zoom.
+        evalGrain(g, i, u.now, u.duration, u.easing, u.settleJitterAmp, tmp);
+        // Hover jitter, matching the GPU: settle-independent, and left in layout
+        // space so it scales with zoom along with the rest of the geometry.
         let jx = tmp.x;
         let jy = tmp.y;
         if (w > 0 && u.hoverJitterAmp > 0) {
           const s = g.seed[i]!;
           const hAmp = u.hoverJitterAmp * w;
-          jx += (Math.sin(u.now * 9.0 + s * 220.0) * hAmp) / vsx;
-          jy += (Math.cos(u.now * 8.3 + s * 190.0) * hAmp) / vsy;
+          jx += Math.sin(u.now * 9.0 + s * 220.0) * hAmp;
+          jy += Math.cos(u.now * 8.3 + s * 190.0) * hAmp;
         }
         // layout [0,1] y-up -> pan/zoom -> plot rect -> device px (y-down)
         const vx = jx * vsx + vox;

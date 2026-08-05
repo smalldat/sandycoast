@@ -42,7 +42,6 @@ fn vs(
   @location(2) dst : vec2<f32>,
   @location(3) md : vec2<f32>,       // delay, seed
   @location(4) ids : vec2<f32>,      // colorIdx, barId
-  @location(5) off : vec2<f32>,      // scatter offset (jitter/ribbon component)
 ) -> VsOut {
   let now = U.a.x;
   let duration = U.a.y;
@@ -56,11 +55,7 @@ fn vs(
   let te = easeApply(t, easingKind);
   let settle = 1.0 - te;
 
-  // Shrink the baked scatter offset by the view scale so the sand's on-screen
-  // spread stays constant under zoom (the offset is ×U.view.xy below). No-op at
-  // identity zoom (view = 1).
-  let comp = dst - off * (1.0 - 1.0 / U.view.xy);
-  var p = mix(start, comp, te);
+  var p = mix(start, dst, te);
 
   // Settle wobble that fades as the grain arrives.
   let baseAmp = U.c.z;
@@ -68,11 +63,12 @@ fn vs(
   p.y += cos((now + seed * 6.283) * 3.3 + seed * 55.0) * baseAmp * settle;
 
   // Hover jitter: extra motion scaled by the (smoothly eased) hover weight.
-  // Divide by the view scale so the on-screen amplitude stays constant under
-  // zoom (the layout-space offset is multiplied by U.view.xy just below).
+  // Amplitude is layout-space, so it rides U.view.xy below and grows with zoom
+  // — the shimmer stays the same size relative to the bar/line you zoomed into
+  // rather than shrinking to a few fixed pixels.
   let hAmp = U.c.y * hw;
-  p.x += sin(now * 9.0 + seed * 220.0) * hAmp / U.view.x;
-  p.y += cos(now * 8.3 + seed * 190.0) * hAmp / U.view.y;
+  p.x += sin(now * 9.0 + seed * 220.0) * hAmp;
+  p.y += cos(now * 8.3 + seed * 190.0) * hAmp;
 
   // Pan/zoom in layout space, then Layout [0,1] (y up) -> plot rect -> clip.
   let pv = p * U.view.xy + U.view.zw;

@@ -84,17 +84,15 @@ export class WebGPURenderer implements Renderer {
             stepMode: 'vertex',
             attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }],
           },
-          // per-instance grain: sx,sy,tx,ty,delay,seed,colorIdx,barId,offX,offY
-          // (10 floats)
+          // per-instance grain: sx,sy,tx,ty,delay,seed,colorIdx,barId (8 floats)
           {
-            arrayStride: 40,
+            arrayStride: 32,
             stepMode: 'instance',
             attributes: [
               { shaderLocation: 1, offset: 0, format: 'float32x2' },
               { shaderLocation: 2, offset: 8, format: 'float32x2' },
               { shaderLocation: 3, offset: 16, format: 'float32x2' },
               { shaderLocation: 4, offset: 24, format: 'float32x2' },
-              { shaderLocation: 5, offset: 32, format: 'float32x2' },
             ],
           },
         ],
@@ -129,9 +127,9 @@ export class WebGPURenderer implements Renderer {
 
   upload(grains: GrainBuffer): void {
     this.grainCount = grains.count;
-    const inst = new Float32Array(grains.count * 10);
+    const inst = new Float32Array(grains.count * 8);
     for (let i = 0; i < grains.count; i++) {
-      const o = i * 10;
+      const o = i * 8;
       inst[o] = grains.startX[i]!;
       inst[o + 1] = grains.startY[i]!;
       inst[o + 2] = grains.targetX[i]!;
@@ -140,8 +138,6 @@ export class WebGPURenderer implements Renderer {
       inst[o + 5] = grains.seed[i]!;
       inst[o + 6] = grains.colorIdx[i]!;
       inst[o + 7] = grains.barId[i]!;
-      inst[o + 8] = grains.offX[i]!;
-      inst[o + 9] = grains.offY[i]!;
     }
     this.instBuf?.destroy();
     this.instBuf = this.device.createBuffer({

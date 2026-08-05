@@ -32,9 +32,6 @@ export interface PackOptions {
 export interface PackTarget {
   targetX: Float32Array;
   targetY: Float32Array;
-  /** Scatter offset (jitter/ribbon component of the target); see GrainBuffer. */
-  offX: Float32Array;
-  offY: Float32Array;
   colorIdx: Uint16Array;
   barId: Uint16Array;
   seed: Float32Array;
@@ -148,9 +145,6 @@ export function packBars(
 
         out.targetX[w] = clamp01(px);
         out.targetY[w] = Math.max(0, py);
-        // Scatter offset = the intra-cell jitter (grid centers fill the bar).
-        out.offX[w] = jx;
-        out.offY[w] = jy;
         out.colorIdx[w] = bar.colorIdx;
         out.barId[w] = bar.barId;
         out.seed[w] = rng();
@@ -246,10 +240,6 @@ export function packLine(
 
       out.targetX[w] = clamp01(px);
       out.targetY[w] = Math.max(0, py);
-      // Scatter offset = deviation from the even-spaced centerline sample: the
-      // perpendicular ribbon fuzz plus the along-axis jitter.
-      out.offX[w] = px - (seg.x0 + dxs * tEven);
-      out.offY[w] = py - (seg.y0 + dys * tEven);
       out.colorIdx[w] = seg.colorIdx;
       out.barId[w] = seg.pointId;
       out.seed[w] = rng();

@@ -51,8 +51,6 @@ export function evalGrain(
   easing: Easing,
   jitterAmp: number,
   out: { x: number; y: number },
-  viewX = 1,
-  viewY = 1,
 ): void {
   const t = (now - g.delay[i]!) / duration;
   const te = ease(t, easing);
@@ -61,10 +59,6 @@ export function evalGrain(
   // Cheap wobble that fades as the grain settles.
   const nx = Math.sin((now + s * 6.283) * 3.0 + s * 100) * jitterAmp * settle;
   const ny = Math.cos((now + s * 6.283) * 3.3 + s * 55) * jitterAmp * settle;
-  // Shrink the baked scatter offset by the view scale so on-screen spread stays
-  // constant under zoom (mirrors the GPU shader; no-op at identity zoom).
-  const tx = g.targetX[i]! - g.offX[i]! * (1 - 1 / viewX);
-  const ty = g.targetY[i]! - g.offY[i]! * (1 - 1 / viewY);
-  out.x = g.startX[i]! + (tx - g.startX[i]!) * te + nx;
-  out.y = g.startY[i]! + (ty - g.startY[i]!) * te + ny;
+  out.x = g.startX[i]! + (g.targetX[i]! - g.startX[i]!) * te + nx;
+  out.y = g.startY[i]! + (g.targetY[i]! - g.startY[i]!) * te + ny;
 }
