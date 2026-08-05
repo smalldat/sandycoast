@@ -5,6 +5,7 @@ First component: a sand bar chart where thousands of grains pour in and settle
 into bars. WebGPU-first, Canvas2D fallback.
 
 ### ▶ Live demo: **[sandycoast.smalldat.com](https://sandycoast.smalldat.com/)**
+### ▶ **[Stackblitz interactive example](https://stackblitz.com/github/smalldat/sandycoast/tree/main/examples/stackblitz-demo?file=main.ts)**
 
 Interactive playground — tweak grain density, animation, bars, and live data in
 the browser. No install needed.

@@ -4,19 +4,28 @@ import { renderControls } from './controls.js';
 import { clearSettings, deepMerge, loadSettings, saveSettings } from './persist.js';
 import type { DemoComponent } from './registry.js';
 
-const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
 const SERIES = ['EU', 'US', 'APAC'];
-/** Cap continuous addition so the chart stays bounded (oldest slot drops off). */
-const MAX_SLOTS = 14;
+/** Slots the chart starts with, and how far past that continuous addition runs. */
+const DEFAULT_SLOTS = 4;
+/** Headroom for continuous addition above the configured slot count. */
+const ADD_HEADROOM = 10;
+/** Hard cap so the slots control can't wedge the tab. */
+const MAX_SLOTS = 10000;
 
 function randomY(): number {
   return 20 + Math.round(Math.random() * 100);
 }
 
-function randomData(): DataSet {
+/** Slot label: the familiar quarter names, extended past Q4 for larger counts. */
+function slotLabel(i: number): string {
+  return `Q${i + 1}`;
+}
+
+function randomData(slots: number): DataSet {
   const points: Point[] = [];
-  for (const q of QUARTERS) {
-    for (const s of SERIES) points.push({ x: q, y: randomY(), z: s });
+  for (let i = 0; i < slots; i++) {
+    const x = slotLabel(i);
+    for (const s of SERIES) points.push({ x, y: randomY(), z: s });
   }
   return { points };
 }
@@ -27,6 +36,8 @@ type Cfg = Record<string, unknown>;
 
 function defaultConfig(): Cfg {
   return {
+    // Playground-only knob (`slotCount`) the BarChart itself ignores.
+    slotCount: DEFAULT_SLOTS,
     grainDensity: 0.9,
     maxGrains: 100000,
     background: '#10141c',
@@ -123,6 +134,19 @@ function presets(): Record<PresetName, Cfg> {
 }
 
 const GROUPS: ControlGroup[] = [
+  {
+    title: 'Data',
+    controls: [
+      {
+        kind: 'number',
+        label: `Slots (≤${MAX_SLOTS})`,
+        path: 'slotCount',
+        min: 1,
+        max: MAX_SLOTS,
+        step: 1,
+      },
+    ],
+  },
   {
     title: 'Grain & render',
     controls: [
@@ -471,7 +495,7 @@ class BarChartDemo implements DemoComponent {
   label = 'Bar chart';
 
   private cfg: Cfg = defaultConfig();
-  private data: DataSet = randomData();
+  private data: DataSet = randomData(DEFAULT_SLOTS);
   private chart: BarChart | null = null;
   private chartEl!: HTMLElement;
   private statusEl!: HTMLElement;
@@ -482,12 +506,26 @@ class BarChartDemo implements DemoComponent {
   private addTimer: ReturnType<typeof setInterval> | null = null;
   /** Monotonic label counter for added x-slots. */
   private slotSeq = 0;
+  /** Slot count the current data was generated at, to detect config changes. */
+  private dataSlots = 0;
+
+  private get slotCount(): number {
+    const n = Number(this.cfg.slotCount) || DEFAULT_SLOTS;
+    return Math.max(1, Math.min(MAX_SLOTS, Math.round(n)));
+  }
+
+  /** (Re)generate the dataset at the configured slot count. */
+  private regenerate(): void {
+    this.data = randomData(this.slotCount);
+    this.dataSlots = this.slotCount;
+    this.slotSeq = 0;
+  }
 
   mount(host: HTMLElement, panel: HTMLElement): void {
     this.panelEl = panel;
     // Start from defaults, then overlay whatever was persisted last session.
     this.cfg = loadSettings(this.id, defaultConfig());
-    this.data = randomData();
+    this.regenerate();
 
     // Chart column: canvas host + data toolbar + status/hover readouts.
     host.replaceChildren();
@@ -497,13 +535,13 @@ class BarChartDemo implements DemoComponent {
     toolbar.className = 'toolbar';
     const rePour = button('Re-pour', () => this.chart?.repour());
     const rand = button('Random data', () => {
-      this.data = randomData();
-      this.slotSeq = 0;
+      this.regenerate();
       this.chart?.update(this.data);
     });
     const reset = button('Reset settings', () => {
       clearSettings(this.id);
       this.cfg = defaultConfig();
+      this.regenerate();
       this.renderPanel();
       this.rebuild();
     });
@@ -540,7 +578,14 @@ class BarChartDemo implements DemoComponent {
   private renderPanel(): void {
     renderControls(this.panelEl, this.cfg, GROUPS, () => {
       saveSettings(this.id, this.cfg);
-      this.rebuild();
+      // Regenerate only when the slot count changed; other edits keep the
+      // current data so morph transitions stay visible.
+      if (this.slotCount !== this.dataSlots) {
+        this.regenerate();
+        this.rebuild(true);
+      } else {
+        this.rebuild(false);
+      }
     });
   }
 
@@ -575,8 +620,10 @@ class BarChartDemo implements DemoComponent {
   private addSlot(): void {
     const label = `N${++this.slotSeq}`;
     this.chart?.add(SERIES.map((z) => ({ x: label, y: randomY(), z })));
+    // Bound continuous addition relative to the configured count, so a large
+    // slot count doesn't get chewed away one slot per tick.
     const xs = this.currentXs();
-    if (xs.length > MAX_SLOTS) this.chart?.remove([{ x: xs[0]! }]);
+    if (xs.length > this.slotCount + ADD_HEADROOM) this.chart?.remove([{ x: xs[0]! }]);
   }
 
   /** Remove the last x-slot (every series bar at that x). */
@@ -607,7 +654,8 @@ class BarChartDemo implements DemoComponent {
   // Swap the whole config to a named preset, persist it, refresh the panel so
   // every input reflects the new values, then rebuild.
   private applyPreset(name: PresetName): void {
-    this.cfg = presets()[name];
+    // Presets are a look, not a dataset — carry the slot count across.
+    this.cfg = deepMerge(presets()[name], { slotCount: this.cfg.slotCount });
     saveSettings(this.id, this.cfg);
     this.renderPanel();
     this.rebuild();
@@ -616,7 +664,8 @@ class BarChartDemo implements DemoComponent {
   private build(): void {
     this.chart = new BarChart(this.chartEl, { ...(this.cfg as object), data: this.data } as never);
     this.chart.whenReady().then(() => {
-      this.statusEl.textContent = `backend: ${this.chart?.backend ?? '?'}`;
+      const bars = this.data.points.length;
+      this.statusEl.textContent = `backend: ${this.chart?.backend ?? '?'} · ${bars} bars`;
     });
     this.chart.on('hover', ({ bar }) => {
       this.hoverEl.textContent = bar
@@ -627,8 +676,9 @@ class BarChartDemo implements DemoComponent {
 
   // Config is construct-time; any edit disposes and rebuilds. Capture live data
   // from the chart first so continuous update/add edits survive the rebuild.
-  private rebuild(): void {
-    if (this.chart) this.data = this.chart.getData();
+  private rebuild(regenerated = false): void {
+    // Keep the chart's live data unless we just generated a fresh dataset.
+    if (this.chart && !regenerated) this.data = this.chart.getData();
     this.chart?.dispose();
     this.build();
   }
