@@ -1,4 +1,4 @@
-import { BarChart } from '../../src/index.js';
+import { BarChart, LineChart } from '../../src/index.js';
 import type { ChartKind, ProbeEvent } from '../scenarios/types.js';
 
 /** The slice of a chart's API the harness needs. Every visual satisfies it. */
@@ -25,9 +25,10 @@ export const CHARTS: Record<ChartKind, ChartFactory> = {
     chart.on('hover', (p) => emit({ type: 'hover', payload: p.bar }));
     return chart;
   },
-  // Registered in plan 08 step 3.
-  line: () => {
-    throw new Error('line scenarios not wired yet');
+  line: (host, config, emit) => {
+    const chart = new LineChart(host, config as never);
+    chart.on('hover', (p) => emit({ type: 'hover', payload: p.point }));
+    return chart;
   },
   pie: () => {
     throw new Error('pie scenarios not wired yet');
