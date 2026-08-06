@@ -12,7 +12,7 @@ const config: Omit<BarChartConfig, 'backend'> = {
   grainDensity: 0.6,
   colors: ['#e8b96a'],
   // FPS text repaints every frame — pure screenshot noise, and irrelevant here.
-  fps: false,
+  fps: { position: 'off' },
   interaction: { hover: { effects: ['highlight'] } },
 };
 

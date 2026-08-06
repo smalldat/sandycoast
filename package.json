@@ -40,6 +40,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.1.2",
     "@webgpu/types": "^0.1.51",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",

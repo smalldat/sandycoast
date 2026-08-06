@@ -1,9 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
+import type { Pkg } from './fixtures/harness.js';
 
 const PORT = 5299;
 const BASE_URL = `http://localhost:${PORT}`;
 
-export default defineConfig({
+export default defineConfig<{ pkg: Pkg }>({
   testDir: './specs',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -26,6 +27,19 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         deviceScaleFactor: 1,
         launchOptions: { args: ['--force-color-profile=srgb', '--font-render-hinting=none'] },
+      },
+    },
+    {
+      // Same scenarios against `dist/index.js` instead of `src/index.ts` — the
+      // built `exports` map and tsup output, not just the TS sources. Requires
+      // `npm run build` first; there is no dist/ dependency wired into the
+      // `e2e` script itself, so run it manually before this project locally.
+      name: 'packaged',
+      use: {
+        ...devices['Desktop Chrome'],
+        deviceScaleFactor: 1,
+        launchOptions: { args: ['--force-color-profile=srgb', '--font-render-hinting=none'] },
+        pkg: 'dist',
       },
     },
   ],

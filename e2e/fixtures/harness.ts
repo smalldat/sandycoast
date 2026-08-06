@@ -1,6 +1,18 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { type Locator, type Page, test as base, expect } from '@playwright/test';
 import type { Act, ProbeEvent, Scenario, Step } from '../scenarios/types.js';
 import { installFakeClock } from './clock.js';
+
+/** Which build the harness imports the chart classes from. */
+export type Pkg = 'src' | 'dist';
+
+/**
+ * `pkg` is a project-level option (see the `packaged` project in
+ * playwright.config.ts): every test in that project runs against
+ * `dist/index.js` instead of `src/index.ts` without each spec asking for it.
+ */
+export const test = base.extend<{ pkg: Pkg }>({
+  pkg: ['src', { option: true }],
+});
 
 /** Frames run after every scripted action so hover fades and redraws land. */
 const POST_ACT_MS = 100;
@@ -26,12 +38,18 @@ export async function mountScenario(
   page: Page,
   scenario: Scenario,
   backend = 'canvas2d',
+  pkg: Pkg = 'src',
 ): Promise<Mounted> {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
 
   await page.addInitScript(installFakeClock);
-  await page.goto(`/?scenario=${encodeURIComponent(scenario.id)}&backend=${backend}`);
+  // `packaged` gets its own entry (main.dist.ts, statically imported — see
+  // harness/charts.dist.ts) rather than a query-param branch in the same
+  // entry: a dynamic `import()` of the chart factories was unreliable under
+  // Vite's dev server, where a static import is not.
+  const path = pkg === 'dist' ? '/packaged.html' : '/';
+  await page.goto(`${path}?scenario=${encodeURIComponent(scenario.id)}&backend=${backend}`);
   // The probe is published only after `whenReady()` resolves, so its presence
   // is the boot signal.
   await page.waitForFunction(() => !!window.__sc, undefined, { timeout: 15_000 });

@@ -1,24 +1,13 @@
-import { BarChart, LineChart, PieChart } from '../../src/index.js';
-import type { ChartKind, ProbeEvent } from '../scenarios/types.js';
+import { BarChart, LineChart, PieChart } from '../../dist/index.js';
+import type { ChartKind } from '../scenarios/types.js';
+import type { ChartFactory } from './charts.js';
 
-/** The slice of a chart's API the harness needs. Every visual satisfies it. */
-export interface ChartHandle {
-  whenReady(): Promise<void>;
-  dispose(): void;
-  readonly backend: string | null;
-}
-
-export type ChartFactory = (
-  host: HTMLElement,
-  config: Record<string, unknown>,
-  emit: (event: ProbeEvent) => void,
-) => ChartHandle;
-
-/**
- * Chart constructors, keyed by {@link ChartKind}. Each factory also wires that
- * chart's events into the probe — payload shapes differ per visual, so this is
- * the one place that knows about them.
- */
+// Static import (not dynamic): a dynamic `import()` of this same file was
+// unreliable under Vite's dev server — a static import is exactly what Vite's
+// import analysis rewrites to `/@fs/<abs path>` correctly and consistently,
+// same as `charts.ts` importing `src/index.ts`. Only reachable via
+// main.dist.ts / packaged.html, so this file is excluded from `tsc -p e2e`
+// (see ../tsconfig.json) rather than requiring a build for every typecheck.
 export const CHARTS: Record<ChartKind, ChartFactory> = {
   bar: (host, config, emit) => {
     const chart = new BarChart(host, config as never);
