@@ -45,7 +45,6 @@ export class WebGPURenderer implements Renderer {
     if (!adapter) throw new Error('WebGPU adapter unavailable');
     this.device = await adapter.requestDevice();
     this.device.addEventListener('uncapturederror', (e) => {
-      // biome-ignore lint/suspicious/noConsole: surface GPU validation errors
       console.error('[webgpu] uncaptured error:', (e as GPUUncapturedErrorEvent).error.message);
     });
     const ctx = canvas.getContext('webgpu');

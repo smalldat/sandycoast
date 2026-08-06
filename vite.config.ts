@@ -6,7 +6,7 @@ export default defineConfig({
   root: 'playground',
   base: '/',
   // Playground imports from ../src, which lives outside the Vite root.
-  server: { port: 5199, open: true, fs: { allow: ['..'] } },
+  server: { port: 5199, open: true, fs: { allow: ['..'] }, host: '0.0.0.0' },
   build: {
     // Emit outside the Vite root so the deployed dir is unambiguous in CI.
     outDir: '../site-dist',

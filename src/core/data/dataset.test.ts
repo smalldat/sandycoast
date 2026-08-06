@@ -33,8 +33,8 @@ describe('resolveTypes', () => {
 
   it('skips leading nulls when inferring', () => {
     const t = resolveTypes({
-      // biome-ignore lint/suspicious/noExplicitAny: intentional bad row
       points: [
+        // biome-ignore lint/suspicious/noExplicitAny: intentional bad row
         { x: null as any, y: 3 },
         { x: 7, y: 4 },
       ],

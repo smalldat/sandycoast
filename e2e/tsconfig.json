@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false,
+    // Playwright config + specs run in Node; the harness needs the GPU types
+    // that `src/` pulls in.
+    "types": ["node", "@webgpu/types"]
+  },
+  "include": [".", "../src"],
+  // Import `dist/index.js` directly (see harness/charts.dist.ts); typechecking
+  // them would require a build first. Only reachable via the `packaged` project.
+  "exclude": ["harness/charts.dist.ts", "harness/main.dist.ts"]
+}

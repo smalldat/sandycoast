@@ -2,6 +2,9 @@ node_modules
 dist
 site-dist
 *.tsbuildinfo
+test-results
+playwright-report
+blob-report
 .DS_Store
 .firebase
 firebase-debug.log
