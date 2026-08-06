@@ -92,7 +92,9 @@ export async function runStep(m: Mounted, step: Step): Promise<void> {
     expect(fired, `step "${step.name}": unexpected ${exp.noEvent} event(s)`).toHaveLength(0);
   }
   if (exp.minInk !== undefined) {
-    expect(await m.ink(), `step "${step.name}": too few painted pixels`).toBeGreaterThan(exp.minInk);
+    expect(await m.ink(), `step "${step.name}": too few painted pixels`).toBeGreaterThan(
+      exp.minInk,
+    );
   }
 }
 
