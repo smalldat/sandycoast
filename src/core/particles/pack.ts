@@ -1,5 +1,7 @@
 import { mulberry32 } from './rng.js';
 
+const TAU = Math.PI * 2;
+
 /** A bar in normalized layout space `[0,1]`, origin bottom-left, +y up. */
 export interface BarRect {
   /** Left edge, [0,1]. */
@@ -347,6 +349,77 @@ export function packLine(
       out.targetY[w] = Math.max(0, py);
       out.colorIdx[w] = seg.colorIdx;
       out.barId[w] = seg.pointId;
+      out.seed[w] = rng();
+      w++;
+    }
+  }
+  return w - offset;
+}
+
+/**
+ * A scatter point's sand cloud: grains scatter in a jittered disc around
+ * `(cx, cy)`, normalized layout space `[0,1]`, origin bottom-left, +y up.
+ */
+export interface PointBlob {
+  cx: number;
+  cy: number;
+  /** Cloud radius grains scatter within, layout units. */
+  radius: number;
+  colorIdx: number;
+  /** Point id for hover hit-testing / highlight (shares the grain `barId` slot). */
+  barId: number;
+}
+
+/** Area of a blob's cloud disc, used to weight its share of the grain budget. */
+export function blobArea(b: PointBlob): number {
+  const r = Math.max(0, b.radius);
+  return Math.PI * r * r;
+}
+
+/**
+ * Grains per point: the density-driven {@link grainBudget} shared out in
+ * proportion to cloud area, so adding points subdivides the same sand budget
+ * rather than asking for more. Mirrors {@link wedgeGrainCounts} for blobs.
+ */
+export function blobGrainCounts(blobs: PointBlob[], opts: PackOptions): number[] {
+  return distribute(grainBudget(opts), blobs.map(blobArea));
+}
+
+/**
+ * Pack grains into each point's cloud on a jittered disc and write target
+ * positions/attributes into `out` starting at `offset`. Returns grains written.
+ *
+ * Each grain samples the disc directly (no grid — a cloud this small reads
+ * round regardless of point density) with `r = sqrt(u) * radius * jitter` so
+ * grains land area-uniformly rather than bunching at the center. `jitter`
+ * scales the cloud's spread the same way it scales the line ribbon's width:
+ * 0 collapses every grain onto the point center, 1 fills the full radius.
+ */
+export function packBlobs(
+  blobs: PointBlob[],
+  counts: number[],
+  out: PackTarget,
+  opts: PackOptions,
+  offset = 0,
+): number {
+  const jitter = opts.jitter ?? 0.6;
+  const rng = mulberry32(opts.seed ?? 1);
+  let w = offset;
+
+  for (let bi = 0; bi < blobs.length; bi++) {
+    const blob = blobs[bi]!;
+    const n = counts[bi]!;
+    const r = Math.max(0, blob.radius);
+    if (n <= 0 || r <= 0) continue;
+
+    for (let k = 0; k < n; k++) {
+      const a = rng() * TAU;
+      const rad = Math.sqrt(rng()) * r * jitter;
+
+      out.targetX[w] = clamp01(blob.cx + Math.sin(a) * rad);
+      out.targetY[w] = clamp01(blob.cy + Math.cos(a) * rad);
+      out.colorIdx[w] = blob.colorIdx;
+      out.barId[w] = blob.barId;
       out.seed[w] = rng();
       w++;
     }

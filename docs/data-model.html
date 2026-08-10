@@ -24,6 +24,7 @@
       <h4>Visuals</h4>
       <a href="bar-chart.html">Bar chart</a>
       <a href="line-chart.html">Line chart</a>
+      <a href="scatter-chart.html">Scatter chart</a>
     </nav>
     <nav class="nav-group">
       <h4>Project</h4>
@@ -44,6 +45,7 @@
       <a href="#dataset">DataSet &amp; Point</a>
       <a href="#fromrows">Building from rows</a>
       <a href="#helpers">Array helpers</a>
+      <a href="#mesh">Mesh data &amp; approximation</a>
       <a href="#scales">Scales</a>
       <a href="#colors">Colors</a>
       <a href="#easing">Easing</a>
@@ -110,6 +112,55 @@
     </table>
     <pre><code><span class="tok-key">type</span> <span class="tok-typ">PointPatch</span> = { x: <span class="tok-typ">Scalar</span>; z?: <span class="tok-typ">Scalar</span>; y: <span class="tok-typ">Scalar</span> };
 <span class="tok-key">type</span> <span class="tok-typ">PointRef</span>   = <span class="tok-typ">number</span> | { x: <span class="tok-typ">Scalar</span>; z?: <span class="tok-typ">Scalar</span> };  <span class="tok-com">// -1 = last point</span></code></pre>
+
+    <h2 id="mesh">Mesh data &amp; approximation</h2>
+    <p>The <a href="scatter-chart.html">scatter chart</a> (and a future mesh chart) need a <code>z</code>
+      that carries a numeric value, an independent timestamp and an opaque custom payload — for coloring
+      and, later, mesh height/topology. That's a different shape than every other chart's
+      <code>z: Scalar</code> series discriminator, so it's an <strong>additive sibling</strong> to
+      <code>Point</code>/<code>DataSet</code> above, not a change to them.</p>
+    <pre><code><span class="tok-key">interface</span> <span class="tok-typ">MeshValue</span>&lt;Custom = <span class="tok-typ">unknown</span>&gt; {
+  value?: <span class="tok-typ">number</span>;      <span class="tok-com">// coloring today, mesh height/weight later</span>
+  datetime?: <span class="tok-typ">Date</span>;      <span class="tok-com">// independent per-point timestamp, not the x axis</span>
+  custom?: Custom;     <span class="tok-com">// opaque caller payload, carried through to hover events</span>
+}
+
+<span class="tok-key">interface</span> <span class="tok-typ">MeshPoint</span>&lt;X = <span class="tok-typ">Scalar</span>, Y = <span class="tok-typ">Scalar</span>, Custom = <span class="tok-typ">unknown</span>&gt; {
+  x: X;
+  y: Y;
+  z?: <span class="tok-typ">MeshValue</span>&lt;Custom&gt;;
+}
+
+<span class="tok-com">// z no longer discriminates series membership, so series are explicit:</span>
+<span class="tok-key">interface</span> <span class="tok-typ">MeshSeries</span>&lt;Custom = <span class="tok-typ">unknown</span>&gt; {
+  key?: <span class="tok-typ">Scalar</span>;         <span class="tok-com">// legend label</span>
+  points: <span class="tok-typ">MeshPoint</span>&lt;<span class="tok-typ">Scalar</span>, <span class="tok-typ">Scalar</span>, Custom&gt;[];
+}
+
+<span class="tok-key">interface</span> <span class="tok-typ">MeshDataSet</span>&lt;Custom = <span class="tok-typ">unknown</span>&gt; {
+  series: <span class="tok-typ">MeshSeries</span>&lt;Custom&gt;[];
+  xType?: <span class="tok-typ">FieldType</span>;
+  yType?: <span class="tok-typ">FieldType</span>;
+}</code></pre>
+    <div class="note"><code>MeshValue.value</code> is typed and threaded through to hover metadata today,
+      but does not yet drive marker color — there's no sequential/diverging color-scale utility in the
+      library yet. It exists so a future "color by value" pass and a future mesh chart both consume one
+      shape instead of inventing their own.</div>
+    <p><code>resolveMeshTypes</code> / <code>validateMesh</code> / <code>meshPoints</code> are the
+      <code>MeshDataSet</code> counterparts of <code>resolveTypes</code> / <code>validate</code> above
+      (<code>core/data/types.ts</code> itself is untouched by any of this).</p>
+    <p>Scatter's swappable point-cloud fit — the <code>approximation</code> config's <code>kind</code> —
+      is a small interface, also exported for building a custom strategy or reusing the built-ins
+      elsewhere:</p>
+    <pre><code><span class="tok-key">interface</span> <span class="tok-typ">FitPoint</span> { x: <span class="tok-typ">number</span>; y: <span class="tok-typ">number</span>; }
+
+<span class="tok-key">interface</span> <span class="tok-typ">Approximation</span> {
+  <span class="tok-key">readonly</span> kind: <span class="tok-typ">string</span>;
+  <span class="tok-fn">fit</span>(points: <span class="tok-typ">FitPoint</span>[]): <span class="tok-typ">FitPoint</span>[];
+}</code></pre>
+    <p>Built-ins: <code>NoneApproximation</code>, <code>StraightApproximation</code>,
+      <code>SplineApproximation</code>, <code>LeastSquaresApproximation</code>. Full behavior table on
+      the <a href="scatter-chart.html#approximation-kinds">scatter chart page</a>.</p>
 
     <h2 id="scales">Scales</h2>
     <p>Charts pick a scale from each field's type automatically. The scale primitives are exported for
@@ -232,12 +283,13 @@ chart.<span class="tok-fn">resetView</span>();           <span class="tok-com">/
     <h2 id="exports">What's exported</h2>
     <p>From <code>@smalldat/sandycoast</code>:</p>
     <ul>
-      <li><strong>Charts:</strong> <code>BarChart</code>, <code>LineChart</code> (+ their config &amp; meta types).</li>
+      <li><strong>Charts:</strong> <code>BarChart</code>, <code>LineChart</code>, <code>ScatterChart</code> (+ their config &amp; meta types).</li>
       <li><strong>Data:</strong> <code>fromRows</code>, <code>patchPoints</code>, <code>appendPoints</code>, <code>removePoints</code>, <code>seriesKeys</code>, <code>validate</code>, <code>inferType</code>, <code>resolveTypes</code>, <code>toNumeric</code>, <code>DataError</code> (+ <code>DataSet</code>, <code>Point</code>, <code>Scalar</code>, <code>FieldType</code>, <code>PointPatch</code>, <code>PointRef</code> types).</li>
+      <li><strong>Mesh &amp; approximation:</strong> <code>meshPoints</code>, <code>resolveMeshTypes</code>, <code>validateMesh</code>, <code>NoneApproximation</code>, <code>StraightApproximation</code>, <code>SplineApproximation</code>, <code>LeastSquaresApproximation</code> (+ <code>MeshValue</code>, <code>MeshPoint</code>, <code>MeshSeries</code>, <code>MeshDataSet</code>, <code>Approximation</code>, <code>FitPoint</code> types). See <a href="#mesh">Mesh data &amp; approximation</a>.</li>
       <li><strong>Scales:</strong> <code>LinearScale</code>, <code>TimeScale</code>, <code>BandScale</code>, <code>makeScale</code>.</li>
       <li><strong>Color:</strong> <code>DEFAULT_PALETTE</code>, <code>parseColor</code>, <code>cssRGBA</code>.</li>
       <li><strong>Pan &amp; zoom:</strong> <code>PanZoomController</code>, <code>ZoomControls</code>, <code>resolvePanZoom</code>, <code>IDENTITY_VIEW</code> (+ <code>PanZoomable</code>, <code>PanZoomConfig</code>, <code>ViewTransform</code>, <code>ZoomCorner</code> types).</li>
-      <li><strong>Rendering &amp; particles (advanced / custom visuals):</strong> <code>pickRenderer</code>, <code>allocGrains</code>, <code>packBars</code>, <code>packLine</code>, <code>grainCounts</code>, <code>scatterStarts</code>, <code>evalGrain</code>, <code>ease</code>, and their types.</li>
+      <li><strong>Rendering &amp; particles (advanced / custom visuals):</strong> <code>pickRenderer</code>, <code>allocGrains</code>, <code>packBars</code>, <code>packLine</code>, <code>packBlobs</code>, <code>grainCounts</code>, <code>lineGrainCounts</code>, <code>blobGrainCounts</code>, <code>scatterStarts</code>, <code>evalGrain</code>, <code>ease</code>, <code>tracePolylinePath</code>, <code>catmullRomToBezier</code>, and their types.</li>
     </ul>
 
     <div class="foot">
