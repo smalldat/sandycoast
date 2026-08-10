@@ -1,3 +1,4 @@
+import type { MeshDataSet, MeshPoint } from './mesh.js';
 import type {
   AccessorSpec,
   DataSet,
@@ -140,5 +141,55 @@ export function validate<X extends Scalar, Y extends Scalar, Z extends Scalar>(
     const p = ds.points[i]!;
     if (p.x === null || p.x === undefined) throw new DataError(`point[${i}].x is missing`);
     if (p.y === null || p.y === undefined) throw new DataError(`point[${i}].y is missing`);
+  }
+}
+
+// --- MeshDataSet counterparts (scatter/mesh charts) -------------------------
+//
+// A MeshDataSet groups points by explicit series array rather than a `z`
+// discriminator (see core/data/mesh.ts), so it needs its own resolveTypes/
+// validate rather than reusing the Point<X,Y,Z> versions above.
+
+/** All points across every series of a mesh dataset, in series order. */
+export function meshPoints<Custom>(ds: MeshDataSet<Custom>): MeshPoint<Scalar, Scalar, Custom>[] {
+  const out: MeshPoint<Scalar, Scalar, Custom>[] = [];
+  for (const s of ds.series) out.push(...s.points);
+  return out;
+}
+
+/** Resolve x/y field types for a mesh dataset, respecting explicit overrides. */
+export function resolveMeshTypes(ds: MeshDataSet): { xType: FieldType; yType: FieldType } {
+  const points = meshPoints(ds);
+  if (points.length === 0) {
+    return {
+      xType: ds.xType ?? 'category',
+      yType: ds.yType ?? 'number',
+    };
+  }
+  const sx = firstNonNull(points, (p) => p.x) ?? points[0]!;
+  const sy = firstNonNull(points, (p) => p.y) ?? points[0]!;
+  return {
+    xType: ds.xType ?? inferType(sx.x),
+    yType: ds.yType ?? inferType(sy.y),
+  };
+}
+
+/** Validate structural invariants of a mesh dataset; throws {@link DataError}. */
+export function validateMesh(ds: MeshDataSet): void {
+  if (!Array.isArray(ds.series)) throw new DataError('meshDataset.series must be an array');
+  for (let si = 0; si < ds.series.length; si++) {
+    const s = ds.series[si]!;
+    if (!Array.isArray(s.points)) {
+      throw new DataError(`meshDataset.series[${si}].points must be an array`);
+    }
+    for (let i = 0; i < s.points.length; i++) {
+      const p = s.points[i]!;
+      if (p.x === null || p.x === undefined) {
+        throw new DataError(`meshDataset.series[${si}].points[${i}].x is missing`);
+      }
+      if (p.y === null || p.y === undefined) {
+        throw new DataError(`meshDataset.series[${si}].points[${i}].y is missing`);
+      }
+    }
   }
 }

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scatter chart — @smalldat/sandycoast</title>
+  <meta name="description" content="ScatterChart API reference: every config property, defaults, methods, events and examples." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <span class="dot"></span>
+      <span>@smalldat/sandycoast<small>sand-based charts</small></span>
+    </a>
+    <nav class="nav-group">
+      <h4>Start here</h4>
+      <a href="index.html">Overview</a>
+      <a href="index.html#install">Install &amp; publish</a>
+      <a href="data-model.html">Data model &amp; shared config</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Visuals</h4>
+      <a href="bar-chart.html">Bar chart</a>
+      <a href="line-chart.html">Line chart</a>
+      <a href="scatter-chart.html" class="active">Scatter chart</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Project</h4>
+      <a href="license.html">License</a>
+      <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <span class="eyebrow">Visual</span>
+    <h1>Scatter chart</h1>
+    <p class="lede">Sand settles into a small cloud around each point, then a solid <strong>marker</strong>
+      glyph — circle, triangle, square or asterisk — resolves on top, the scatter analogue of the line
+      chart's solid line and the bar chart's solid border. Both axes are <strong>continuous</strong>
+      (numeric or time), and a swappable <code>approximation</code> strategy can fit a trend/connector
+      line over each series' cloud.</p>
+
+    <div class="note"><strong>Two structural differences from bar/line.</strong> (1) <code>data</code> is
+      a <a href="data-model.html#mesh"><code>MeshDataSet</code></a> — an explicit array of series, not a
+      flat <code>Point[]</code> grouped by <code>z</code> — because <code>z</code> here is a per-point
+      <em>value</em> payload (<a href="data-model.html#mesh"><code>MeshValue</code></a>), not a series
+      key. (2) X is positioned with a real <a href="data-model.html#scales">continuous scale</a>
+      (<code>LinearScale</code>/<code>TimeScale</code>), not slotted into evenly-spaced categories like
+      the line chart's X axis.</div>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <a href="#construct">Constructor</a>
+      <a href="#config">Config: top level</a>
+      <a href="#grain">grain</a>
+      <a href="#animation">animation</a>
+      <a href="#marker">marker</a>
+      <a href="#approximation">approximation</a>
+      <a href="#shared">Shared blocks</a>
+      <a href="data-model.html#panzoom">panZoom</a>
+      <a href="#methods">Methods</a>
+      <a href="#events">Events</a>
+      <a href="#examples">Examples</a>
+    </div>
+
+    <h2 id="construct">Constructor</h2>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">ScatterChart</span>(host: HTMLElement, config: ScatterChartConfig)</code></pre>
+    <p>Mounts a canvas into <code>host</code> and boots the best backend (WebGPU → Canvas2D). Only
+      <code>data</code> is required.</p>
+
+    <h2 id="config">Config — top level</h2>
+    <p>Mirrors the line chart's config field-for-field except for <code>data</code> (a
+      <code>MeshDataSet</code>, not a <code>DataSet</code>), <code>pointRadius</code> (new, replaces
+      <code>lineThickness</code>), <code>line</code> → <code>marker</code>, and the new
+      <code>approximation</code> block.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>data</code> <span class="pill">required</span></td><td class="type">MeshDataSet</td><td class="def">—</td><td>An explicit array of series. See <a href="data-model.html#mesh">Mesh data model</a>.</td></tr>
+        <tr><td><code>pointRadius</code></td><td class="type">number</td><td class="def">0.02</td><td><strong>New for scatter charts.</strong> Sand-cloud radius grains scatter within per point, in layout units.</td></tr>
+        <tr><td><code>grainDensity</code></td><td class="type">number</td><td class="def">0.6</td><td>Grains per unit area of every point's cloud.</td></tr>
+        <tr><td><code>maxGrains</code></td><td class="type">number</td><td class="def">100000</td><td>Hard grain ceiling. Grains scale with total cloud area, not point count, so cost stays bounded as the data grows.</td></tr>
+        <tr><td><code>colors</code></td><td class="type">string[]</td><td class="def">DEFAULT_PALETTE</td><td>Series colors (CSS), cycled per series.</td></tr>
+        <tr><td><code>background</code></td><td class="type">string</td><td class="def">transparent</td><td>Canvas clear color.</td></tr>
+        <tr><td><code>grain</code></td><td class="type">object</td><td class="def">—</td><td>Grain appearance. <a href="#grain">See below</a>.</td></tr>
+        <tr><td><code>animation</code></td><td class="type">object</td><td class="def">—</td><td>Timing. <a href="#animation">See below</a>.</td></tr>
+        <tr><td><code>interaction</code></td><td class="type">object</td><td class="def">—</td><td><a href="bar-chart.html#interaction">Same as bar chart</a>, but hover targets a single point rather than a whole series.</td></tr>
+        <tr><td><code>axes</code></td><td class="type">{ x?, y? }</td><td class="def">off</td><td><a href="bar-chart.html#axes">Same shape as bar chart</a> — both continuous here (see the note above).</td></tr>
+        <tr><td><code>legend</code></td><td class="type">LegendConfig</td><td class="def">off</td><td><a href="bar-chart.html#legend">Same as bar chart</a>.</td></tr>
+        <tr><td><code>title</code></td><td class="type">TitleConfig</td><td class="def">off</td><td>Chart title; shares the legend's placement vocabulary.</td></tr>
+        <tr><td><code>currentValue</code></td><td class="type">object</td><td class="def">off</td><td><a href="bar-chart.html#currentvalue">Same as bar chart</a>.</td></tr>
+        <tr><td><code>marker</code></td><td class="type">MarkerStyleConfig</td><td class="def">off</td><td>Solid marker glyph per point. <a href="#marker">See below</a>.</td></tr>
+        <tr><td><code>approximation</code></td><td class="type">ScatterApproximationConfig</td><td class="def">off</td><td>Trend/connector fit over each series' cloud. <a href="#approximation">See below</a>.</td></tr>
+        <tr><td><code>fps</code></td><td class="type">FpsConfig</td><td class="def">off</td><td><a href="bar-chart.html#fps">Same as bar chart</a>.</td></tr>
+        <tr><td><code>panZoom</code></td><td class="type">PanZoomConfig</td><td class="def">off</td><td>Drag to pan, wheel/UI to zoom. <a href="data-model.html#panzoom">Shared pan &amp; zoom</a>.</td></tr>
+        <tr><td><code>backend</code></td><td class="type">'auto' | 'webgpu' | 'webgl2' | 'canvas2d'</td><td class="def">'auto'</td><td>Force a rendering backend.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="grain"><code>grain</code></h2>
+    <p>Same shape as the bar chart: <code>sizePx</code> (3), <code>shape</code> (<code>'disc'</code>),
+      <code>settleJitter</code> (0.004). <code>jitter</code> (default 0.6) means something slightly
+      different here — it scales how far grains spread across the point's cloud <em>radius</em>
+      (<code>0</code> collapses every grain onto the point center, <code>1</code> fills the whole
+      <code>pointRadius</code>), the same way it scales the line chart's ribbon width. See
+      <a href="bar-chart.html#grain">bar chart → grain</a> for the other properties.</p>
+
+    <h2 id="animation"><code>animation</code></h2>
+    <div class="note warn"><strong>Units:</strong> <code>duration</code>, <code>stagger</code> and
+      <code>morphDuration</code> are in <strong>milliseconds</strong>.</div>
+    <p>Same as the bar chart, with the line chart's two three-way twists renamed for markers:</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>duration</code></td><td class="type">number (ms)</td><td class="def">900</td><td>Per-grain travel time.</td></tr>
+        <tr><td><code>stagger</code></td><td class="type">number (ms)</td><td class="def">500</td><td>Spread of pour start times.</td></tr>
+        <tr><td><code>ease</code></td><td class="type">'linear' | 'easeOutCubic' | 'easeOutQuint'</td><td class="def">'easeOutCubic'</td><td>Grain travel easing.</td></tr>
+        <tr><td><code>morphDuration</code></td><td class="type">number (ms)</td><td class="def">duration + stagger</td><td>Transition window for live changes (marker tween + grain fade).</td></tr>
+        <tr><td><code>reflow</code></td><td class="type">'translate' | 'reshuffle' | 'withMarker'</td><td class="def">'translate'</td>
+          <td>How grains of an <em>unchanged</em> point move. <code>withMarker</code> (vs. the line's <code>withLine</code>) locks them rigidly to the marker — no delay, no fade flash.</td></tr>
+        <tr><td><code>morphGrains</code></td><td class="type">boolean</td><td class="def">true</td>
+          <td>Animate the sand during an <code>update</code>/<code>add</code>/<code>remove</code> morph. <code>false</code> snaps every grain straight to its new position so <strong>only the solid marker tweens</strong> on a data change. Ignored for the initial pour-in.</td></tr>
+        <tr><td><code>enter</code></td><td class="type">'pour' | 'rise' | 'continue'</td><td class="def">'pour'</td>
+          <td>How an <em>added</em> point's grains appear. <code>continue</code> skips the emergence entirely — the marker appears already settled at its position. Best for continuous streaming.</td></tr>
+        <tr><td><code>exit</code></td><td class="type">'fall' | 'vanish'</td><td class="def">'fall'</td><td>How a <em>removed</em> point's grains leave.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="marker"><code>marker</code> — solid glyph <span class="type" style="font-size:15px">MarkerStyleConfig</span></h2>
+    <p>The scatter analogue of the line chart's solid <code>line</code> / bar chart's solid
+      <code>border</code>. Off by default; a config without <code>marker</code> renders as pure sand.
+      Shape/size cycle per series exactly like <code>colors</code>; the marker always uses the point's
+      series color.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>shape</code></td><td class="type">'circle' | 'triangle' | 'square' | 'asterisk'</td><td class="def">'circle'</td><td>Default shape for every series.</td></tr>
+        <tr><td><code>shapes</code></td><td class="type">MarkerShape[]</td><td class="def">—</td><td>Per-series shape cycling, like <code>colors</code>. Overrides <code>shape</code> per series.</td></tr>
+        <tr><td><code>size</code></td><td class="type">number</td><td class="def">6</td><td>Marker size in CSS px.</td></tr>
+        <tr><td><code>sizes</code></td><td class="type">number[]</td><td class="def">—</td><td>Per-series size cycling.</td></tr>
+        <tr><td><code>opacity</code></td><td class="type">number (0..1)</td><td class="def">1</td><td>Marker fill opacity (stroke opacity for <code>asterisk</code>).</td></tr>
+        <tr><td><code>reveal</code></td><td class="type">RevealConfig</td><td class="def">—</td><td>Timing of the particle→marker crossfade — same shape as <a href="bar-chart.html#bars">the bar chart's <code>bars.reveal</code></a> (<code>start</code>, <code>duration</code>, <code>ease</code>, <code>grainsTo</code>).</td></tr>
+      </tbody>
+    </table>
+    <div class="note">Glyphs are cached as a <code>Path2D</code> per (shape, size) pair and translated per
+      point — the shape is never rebuilt per point per frame, so marker count doesn't change per-frame
+      drawing cost beyond the translate + fill/stroke itself.</div>
+
+    <h2 id="approximation"><code>approximation</code> — trend/connector fit <span class="type" style="font-size:15px">ScatterApproximationConfig</span></h2>
+    <p>Off by default. When set, each series' point cloud is fit independently and drawn as a stroked
+      path once the markers resolve, colored by that series unless <code>color</code> overrides it.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>kind</code></td><td class="type">'none' | 'straight' | 'spline' | 'leastSquares' | Approximation</td><td class="def">'none'</td><td>Built-in fit, or any object implementing <code>Approximation</code> for a fully custom strategy. <a href="#approximation-kinds">See below</a>.</td></tr>
+        <tr><td><code>width</code></td><td class="type">number</td><td class="def">1</td><td>Stroke width in CSS px.</td></tr>
+        <tr><td><code>opacity</code></td><td class="type">number (0..1)</td><td class="def">1</td><td>Stroke opacity.</td></tr>
+        <tr><td><code>color</code></td><td class="type">string</td><td class="def">series color</td><td>Stroke color override (CSS).</td></tr>
+      </tbody>
+    </table>
+    <h3 id="approximation-kinds">Built-in <code>kind</code>s</h3>
+    <table class="prop-table">
+      <thead><tr><th>kind</th><th>Behavior</th></tr></thead>
+      <tbody>
+        <tr><td><code>'none'</code></td><td>No-op; nothing is drawn.</td></tr>
+        <tr><td><code>'straight'</code></td><td>Connect consecutively, in the order the series' points are given.</td></tr>
+        <tr><td><code>'spline'</code></td><td>Smooth with a Catmull-Rom curve through the points in the order given (the same curve math the line chart's <code>spline</code> line style uses, extracted to <code>core/geometry/curve.ts</code>).</td></tr>
+        <tr><td><code>'leastSquares'</code></td><td>Ordinary linear least-squares (<code>y = mx + b</code>) over the whole series (order-independent), drawn as the two endpoints spanning its x-domain. A near-vertical cloud (all points at ~the same x) falls back to the mean vertical instead of dividing by ~0.</td></tr>
+      </tbody>
+    </table>
+    <div class="note"><strong>Ordering is the caller's responsibility.</strong> <code>straight</code> and
+      <code>spline</code> connect the points of each series in the order they appear in
+      <code>data.series[i].points</code> — they do not sort by x. A function-shaped cloud (one y per x)
+      typically wants its points pre-sorted by x; a non-monotonic shape like a spiral wants its own
+      natural order (e.g. the order the points were traced in). Sort your series before handing it to
+      the chart if you need x-order.</div>
+    <p>Passing an object in place of a <code>kind</code> string plugs in a fully custom fitter without
+      touching the chart:</p>
+    <pre><code><span class="tok-key">interface</span> <span class="tok-typ">FitPoint</span> { x: <span class="tok-typ">number</span>; y: <span class="tok-typ">number</span>; }
+
+<span class="tok-key">interface</span> <span class="tok-typ">Approximation</span> {
+  <span class="tok-key">readonly</span> kind: <span class="tok-typ">string</span>;
+  <span class="tok-fn">fit</span>(points: <span class="tok-typ">FitPoint</span>[]): <span class="tok-typ">FitPoint</span>[];   <span class="tok-com">// unordered cloud -> ordered path to connect with straight segments</span>
+}</code></pre>
+
+    <h2 id="shared">Shared blocks</h2>
+    <p><code>axes</code>, <code>legend</code>, <code>currentValue</code>, <code>fps</code> and
+      <code>interaction.hover</code> take the same shape the bar chart uses. Full property tables:
+      <a href="bar-chart.html#axes">axes</a> ·
+      <a href="bar-chart.html#legend">legend</a> ·
+      <a href="bar-chart.html#currentvalue">currentValue</a> ·
+      <a href="bar-chart.html#fps">fps</a> ·
+      <a href="bar-chart.html#interaction">interaction.hover</a>.</p>
+    <div class="note">Unlike the bar/line X axis (evenly-spaced category slots), scatter's <code>axes.x</code>
+      <strong>and</strong> <code>axes.y</code> are continuous scales built straight from the data's numeric
+      or time extent, padded ~8% on each side so extreme points don't sit flush against the plot edge.</div>
+
+    <h2 id="methods">Methods</h2>
+    <table class="prop-table">
+      <thead><tr><th>Method</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>whenReady(): Promise&lt;void&gt;</code></td><td>Resolves once the backend is initialized and the first frame is scheduled.</td></tr>
+        <tr><td><code>get backend</code></td><td><code>'webgpu' | 'webgl2' | 'canvas2d' | null</code>.</td></tr>
+        <tr><td><code>on('hover', fn)</code></td><td>Subscribe to hover; returns an unsubscribe function.</td></tr>
+        <tr><td><code>update(data)</code></td><td>Replace the whole <code>MeshDataSet</code>; grains morph and the marker/approximation layer tweens (no re-pour). There is no point-patch overload — scatter has no <code>z</code> series key to match a patch against.</td></tr>
+        <tr><td><code>add(points, seriesIndex = 0)</code></td><td>Append one or more <code>MeshPoint</code>s to a series (created if <code>seriesIndex</code> is past the end); new markers grow in per <code>animation.enter</code>.</td></tr>
+        <tr><td><code>remove(indices, seriesIndex = 0)</code></td><td>Remove points from a series by index within it (negative = from end); the cloud reflows.</td></tr>
+        <tr><td><code>repour()</code></td><td>Re-run the pour-in animation with the current data (no morph).</td></tr>
+        <tr><td><code>getData(): MeshDataSet</code></td><td>Deep-cloned snapshot of the current dataset.</td></tr>
+        <tr><td><code>dispose()</code></td><td>Cancel the loop, remove listeners, free the backend and DOM.</td></tr>
+      </tbody>
+    </table>
+    <p>It also implements the shared <a href="data-model.html#panzoom"><code>PanZoomable</code></a>
+      interface: <code>getView()</code>, <code>setView(v)</code>, <code>panBy()</code>,
+      <code>panTo()</code>, <code>zoomBy()</code>, <code>zoomTo()</code>, <code>resetView()</code>,
+      <code>isPanZoomEnabled()</code>.</p>
+    <div class="note warn"><strong>Point identity.</strong> There is no <code>z</code> key to match points
+      across a rebuild, so morph identity falls back to a point's <code>(seriesIndex, index within that
+      series)</code> — same limitation the line chart has for points sharing an x-slot. Inserting or
+      removing a point <em>inside</em> a series shifts every later point's identity for that morph.</div>
+
+    <h2 id="events">Events</h2>
+    <p>The <code>hover</code> event carries <code>{ point: ScatterMeta | null }</code>, and — unlike the
+      line chart, which highlights the whole hovered series — targets a single point.</p>
+    <pre><code><span class="tok-com">// ScatterMeta — metadata for one drawn point</span>
+{
+  pointId: <span class="tok-typ">number</span>;
+  seriesIndex: <span class="tok-typ">number</span>;
+  indexInSeries: <span class="tok-typ">number</span>;   <span class="tok-com">// position within its series — the morph identity key</span>
+  seriesKey: <span class="tok-typ">Scalar | undefined</span>;
+  xValue: <span class="tok-typ">Scalar</span>;
+  yValue: <span class="tok-typ">Scalar</span>;
+  meshValue: <span class="tok-typ">MeshValue | undefined</span>;  <span class="tok-com">// the point's z payload, if any</span>
+  cx: <span class="tok-typ">number</span>; cy: <span class="tok-typ">number</span>;      <span class="tok-com">// layout-space position [0,1]</span>
+  color: <span class="tok-typ">RGBA</span>;
+}</code></pre>
+
+    <h2 id="examples">Examples</h2>
+
+    <h3>Solid markers over a point cloud</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">ScatterChart</span>(el, {
+  data,
+  pointRadius: <span class="tok-num">0.02</span>,
+  marker: { shape: <span class="tok-str">'circle'</span>, size: <span class="tok-num">7</span>, reveal: { duration: <span class="tok-num">500</span>, grainsTo: <span class="tok-num">0.1</span> } },
+  axes: { x: { show: <span class="tok-key">true</span> }, y: { show: <span class="tok-key">true</span>, gridLines: <span class="tok-key">true</span> } },
+});</code></pre>
+
+    <h3>Trend line via least-squares</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">ScatterChart</span>(el, {
+  data,
+  marker: { shape: <span class="tok-str">'circle'</span>, size: <span class="tok-num">5</span>, opacity: <span class="tok-num">0.85</span> },
+  approximation: { kind: <span class="tok-str">'leastSquares'</span>, width: <span class="tok-num">2</span> },
+});</code></pre>
+
+    <h3>Custom approximation strategy</h3>
+    <pre><code><span class="tok-key">const</span> movingAverage: <span class="tok-typ">Approximation</span> = {
+  kind: <span class="tok-str">'movingAverage'</span>,
+  <span class="tok-fn">fit</span>(points) {
+    <span class="tok-key">const</span> sorted = [...points].<span class="tok-fn">sort</span>((a, b) => a.x - b.x);
+    <span class="tok-key">return</span> sorted.<span class="tok-fn">map</span>((p, i) => {
+      <span class="tok-key">const</span> window = sorted.<span class="tok-fn">slice</span>(<span class="tok-fn">Math.max</span>(<span class="tok-num">0</span>, i - <span class="tok-num">4</span>), i + <span class="tok-num">5</span>);
+      <span class="tok-key">return</span> { x: p.x, y: window.<span class="tok-fn">reduce</span>((s, w) => s + w.y, <span class="tok-num">0</span>) / window.length };
+    });
+  },
+};
+
+<span class="tok-key">new</span> <span class="tok-fn">ScatterChart</span>(el, { data, approximation: { kind: movingAverage } });</code></pre>
+
+    <h3>Per-series marker shapes</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">ScatterChart</span>(el, {
+  data,   <span class="tok-com">// MeshDataSet: series: [{ key: 'A', points: [...] }, { key: 'B', points: [...] }]</span>
+  marker: { shapes: [<span class="tok-str">'circle'</span>, <span class="tok-str">'triangle'</span>, <span class="tok-str">'square'</span>], sizes: [<span class="tok-num">6</span>, <span class="tok-num">8</span>, <span class="tok-num">6</span>] },
+  legend: { show: <span class="tok-key">true</span> },
+});</code></pre>
+
+    <h3>Streaming: appended points settle without a pour</h3>
+    <pre><code><span class="tok-key">const</span> chart = <span class="tok-key">new</span> <span class="tok-fn">ScatterChart</span>(el, {
+  data,
+  marker: { shape: <span class="tok-str">'circle'</span> },
+  animation: { enter: <span class="tok-str">'continue'</span> },   <span class="tok-com">// no pour — marker appears settled</span>
+});
+
+<span class="tok-fn">setInterval</span>(() => {
+  chart.<span class="tok-fn">add</span>({ x: Date.<span class="tok-fn">now</span>(), y: <span class="tok-fn">nextSample</span>() }, <span class="tok-num">0</span>);   <span class="tok-com">// series 0</span>
+}, <span class="tok-num">1000</span>);</code></pre>
+
+    <h3>Hover</h3>
+    <pre><code>chart.<span class="tok-fn">on</span>(<span class="tok-str">'hover'</span>, ({ point }) => {
+  <span class="tok-key">if</span> (point) label.textContent = <span class="tok-str">`</span>(${point.xValue}, ${point.yValue}) · ${point.seriesKey}<span class="tok-str">`</span>;
+});</code></pre>
+
+    <div class="foot">
+      <p>© <span id="yr">2026</span> · <a href="license.html">License</a> ·
+        <a href="data-model.html">Data model →</a></p>
+    </div>
+  </main>
+</div>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
+</body>
+</html>

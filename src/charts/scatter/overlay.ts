@@ -1,26 +1,79 @@
 import type { ResolvedAxis, ResolvedChrome } from '../../core/chrome/chrome.js';
 import { formatNumber } from '../../core/chrome/format.js';
-import type { Scalar } from '../../core/data/types.js';
-import { tracePolylinePath } from '../../core/geometry/curve.js';
+import type { RGBA } from '../../core/render/types.js';
 import { cssRGBA } from '../../core/util/color.js';
+import {
+  type ApproximationPath,
+  type ResolvedApproximation,
+  computeApproximationPaths,
+} from './approximation.js';
 import type { AxisModel } from './axis.js';
-import type { SeriesPath } from './layout.js';
-import type { ResolvedLineStyle } from './lineStyle.js';
-import type { LineMeta } from './types.js';
+import { type ResolvedMarkerStyle, shapeForSeries, sizeForSeries } from './markerStyle.js';
+import type { MarkerShape, ScatterMeta } from './types.js';
 
-/** Compact label for any scalar (number / date / string) used on axis markers. */
-function scalarLabel(v: Scalar): string {
-  if (typeof v === 'number') return formatNumber(v);
-  if (v instanceof Date) return v.toLocaleDateString('en-US');
-  return String(v);
+/** Slices below this hover weight are close enough to un-hovered to skip. */
+const HOVER_EPSILON = 0.001;
+
+function defaultFormat(p: ScatterMeta): string {
+  const series = p.seriesKey !== undefined ? ` · ${String(p.seriesKey)}` : '';
+  const x = typeof p.xValue === 'number' ? formatNumber(p.xValue) : String(p.xValue);
+  const y = typeof p.yValue === 'number' ? formatNumber(p.yValue) : String(p.yValue);
+  return `(${x}, ${y})${series}`;
 }
 
-/** Canvas2D font string for an axis's ticks/title, scaled to device px. */
 function axisFont(cfg: ResolvedAxis, dpr: number): string {
   return `${cfg.fontWeight} ${cfg.fontPx * dpr}px ${cfg.fontFamily}`;
 }
 
-export interface OverlayState {
+/** `RGBA` with an rgb gain (channels multiplied, then clamped) baked in. */
+function gainedRGBA(c: RGBA, gain: number): RGBA {
+  if (gain === 1) return c;
+  return [Math.min(1, c[0] * gain), Math.min(1, c[1] * gain), Math.min(1, c[2] * gain), c[3]];
+}
+
+/**
+ * Build one marker glyph's outline centered on the origin, `sizePx` wide/tall
+ * (device px). `circle`/`square`/`triangle` are closed shapes meant to be
+ * filled; `asterisk` is open strokes.
+ */
+function buildGlyphPath(shape: MarkerShape, sizePx: number): Path2D {
+  const p = new Path2D();
+  const r = sizePx / 2;
+  switch (shape) {
+    case 'circle':
+      p.arc(0, 0, r, 0, Math.PI * 2);
+      break;
+    case 'square':
+      p.rect(-r, -r, sizePx, sizePx);
+      break;
+    case 'triangle':
+      // Equilateral triangle inscribed in the bounding circle, point up.
+      for (let i = 0; i < 3; i++) {
+        const a = -Math.PI / 2 + (i * 2 * Math.PI) / 3;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        if (i === 0) p.moveTo(x, y);
+        else p.lineTo(x, y);
+      }
+      p.closePath();
+      break;
+    case 'asterisk': {
+      // 3 diameters through the center = 6 ray tips.
+      const lines = 3;
+      for (let i = 0; i < lines; i++) {
+        const a = (i * Math.PI) / lines;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        p.moveTo(-x, -y);
+        p.lineTo(x, y);
+      }
+      break;
+    }
+  }
+  return p;
+}
+
+export interface ScatterOverlayState {
   /** Device-pixel canvas size. */
   deviceW: number;
   deviceH: number;
@@ -29,73 +82,44 @@ export interface OverlayState {
   plotRect: [number, number, number, number];
   axes: AxisModel;
   chrome: ResolvedChrome;
-  hoveredPoint: LineMeta | null;
+  hoveredPoint: ScatterMeta | null;
   /** Pointer in device px (y-down), or null when outside. */
   pointer: { x: number; y: number } | null;
-  /** Per-point metadata (line vertices) indexed by pointId. */
-  metas: LineMeta[];
-  /** Per-series polylines to stroke/fill. */
-  paths: SeriesPath[];
-  lineStyle: ResolvedLineStyle;
-  /** Stacked area mode: fill from each point's stack floor with straight edges. */
-  stacked: boolean;
-  /** Reveal factor in [0,1]; scales line/fill opacity. */
+  /** Per-point metadata, indexed by pointId. */
+  metas: ScatterMeta[];
+  markerStyle: ResolvedMarkerStyle;
+  approx: ResolvedApproximation;
+  /** Reveal factor in [0,1]; scales marker/approximation opacity. */
   solid: number;
-  /** Per-point hover weight in [0,1] (index = pointId); brightens the series. */
+  /** Per-point hover weight in [0,1] (index = pointId). */
   hoverWeights: Float32Array;
-  /** Color multiplier for a fully-hovered series (1 = highlight effect off). */
+  /** Color multiplier for a fully-hovered point (1 = highlight effect off). */
   highlightGain: number;
   /** Pan/zoom transform applied to layout coords (default identity). */
   viewScale?: [number, number];
   viewOffset?: [number, number];
-  /** Clip plot-interior chrome (line/grid/ticks) to the plot rect (pan/zoom). */
+  /** Clip plot-interior chrome (markers/approx/grid/ticks) to the plot rect. */
   clipToPlot?: boolean;
   /**
-   * Bumped by the chart whenever the underlying point geometry changes (data
-   * rebuild, morph tick). Together with the view/size fields it keys the cached
-   * series bitmaps — see {@link Overlay.seriesLayers}.
+   * Bumped by the chart whenever point geometry changes (data rebuild, morph
+   * tick). Keys the cached approximation fit — see {@link Overlay.approximationPaths}.
    */
   geomVersion: number;
 }
 
 /**
- * Below this average horizontal point spacing (device px) a spline's control
- * points land inside a single pixel, so it rasterizes the same as straight
- * segments. Dropping to `lineTo` there skips the curve flattening for free.
- */
-const SPLINE_MIN_SPACING_PX = 3;
-
-/** Stroke bleed allowance so a wide line isn't clipped at the layer edge. */
-const LAYER_PAD_PX = 8;
-
-/**
- * One series pre-rasterized into its own bitmap, positioned at `left`/`top` in
- * device px on the main overlay canvas.
- */
-interface SeriesLayer {
-  canvas: HTMLCanvasElement;
-  left: number;
-  top: number;
-}
-
-function defaultFormat(p: LineMeta): string {
-  const series = p.seriesKey !== undefined ? ` · ${String(p.seriesKey)}` : '';
-  const x = typeof p.xValue === 'number' ? formatNumber(p.xValue) : String(p.xValue);
-  return `${x}${series} = ${formatNumber(p.yValue)}`;
-}
-
-/**
- * Canvas2D overlay drawn on top of the grain canvas. Renders the solid line
- * (straight or spline) + optional area fill, plus axis spines, ticks, tick
- * labels, optional grid lines, and the current-value readout. Uses the same
- * `plotRect` as the grains so everything stays pixel-aligned.
+ * Canvas2D overlay drawn on top of the grain canvas. Renders solid marker
+ * glyphs (cached `Path2D` per shape/size pair, per §4c), the approximation
+ * trend/connector line, axis spines/ticks/labels, and the current-value
+ * readout. Uses the same `plotRect` as the grains so everything stays
+ * pixel-aligned.
  */
 export class Overlay {
   private ctx: CanvasRenderingContext2D;
-  /** Pre-rasterized per-series bitmaps; see {@link seriesLayers}. */
-  private layers: SeriesLayer[] | null = null;
-  /** Key the layers were rasterized for; a mismatch forces a re-render. */
-  private layerKey = '';
+  /** Marker outlines, cached per (shape, device-px size) pair — never rebuilt per point per frame. */
+  private glyphs = new Map<string, Path2D>();
+  /** Fitted approximation paths, recomputed only when the geometry changes. */
+  private approxCache: { key: number; paths: ApproximationPath[] } | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -107,21 +131,16 @@ export class Overlay {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  /** Release the cached series bitmaps (several MB each on a wide chart). */
   dispose(): void {
-    for (const l of this.layers ?? []) {
-      l.canvas.width = 0;
-      l.canvas.height = 0;
-    }
-    this.layers = null;
-    this.layerKey = '';
+    this.glyphs.clear();
+    this.approxCache = null;
   }
 
-  draw(s: OverlayState): void {
+  draw(s: ScatterOverlayState): void {
     const ctx = this.ctx;
     const { deviceW: W, deviceH: H, dpr } = s;
     ctx.clearRect(0, 0, W, H);
-    if (!s.chrome.any && !s.lineStyle.enabled) return;
+    if (!s.chrome.any && !s.markerStyle.enabled && !s.approx.enabled) return;
 
     const [x0, y0, x1, y1] = s.plotRect;
     const leftPx = x0 * W;
@@ -137,11 +156,12 @@ export class Overlay {
     const dx = (lx: number): number => (x0 + (lx * vsx + vox) * (x1 - x0)) * W;
     const dy = (ly: number): number => (1 - (y0 + (ly * vsy + voy) * (y1 - y0))) * H;
 
-    // Solid line/fill first, so axes/ticks/current-value sit above it.
-    if (s.lineStyle.enabled && s.solid > 0) {
-      this.clip(s.clipToPlot, leftPx, topPx, rightPx - leftPx, bottomPx - topPx, () =>
-        this.drawSeries(s, dx, dy, dpr),
-      );
+    // Solid layer first, so axes/ticks/current-value sit above it.
+    if ((s.approx.enabled || s.markerStyle.enabled) && s.solid > 0) {
+      this.clip(s.clipToPlot, leftPx, topPx, rightPx - leftPx, bottomPx - topPx, () => {
+        if (s.approx.enabled) this.drawApproximation(s, dx, dy, dpr);
+        if (s.markerStyle.enabled) this.drawMarkers(s, dx, dy, dpr);
+      });
     }
     if (!s.chrome.any) return;
 
@@ -174,158 +194,85 @@ export class Overlay {
     ctx.restore();
   }
 
-  /**
-   * Each series rasterized once into its own bitmap, re-rendered only when the
-   * geometry or the projection actually changes.
-   *
-   * Hover redraws dominate this canvas: the highlight effect repaints every
-   * frame while the pointer is over a series, but only the *style* differs
-   * between those frames. Caching the traced `Path2D` wasn't enough — a
-   * `Path2D` caches path construction, not rasterization, and rasterizing is
-   * where the time goes. A 5k-point noisy area fill is a self-intersecting
-   * 10k-vertex polygon: nonzero-winding scanline fill sorts thousands of edge
-   * crossings per scanline, every scanline, every frame. Doing that three times
-   * a frame to change a color is what held the chart at ~16 FPS.
-   *
-   * So each series is rasterized at gain 1 and full per-layer opacity, and a
-   * steady-state frame becomes one `drawImage` per series. The reveal factor
-   * rides on `globalAlpha` and the hover highlight on a `brightness()` filter,
-   * neither of which needs the path back.
-   */
-  private seriesLayers(
-    s: OverlayState,
-    dx: (lx: number) => number,
-    dy: (ly: number) => number,
-    dpr: number,
-  ): SeriesLayer[] {
-    const { fill, line } = s.lineStyle;
-    const key = [
-      s.geomVersion,
-      s.deviceW,
-      s.deviceH,
-      s.plotRect.join(','),
-      s.viewScale?.join(',') ?? '',
-      s.viewOffset?.join(',') ?? '',
-      s.stacked,
-      line.style,
-      line.on,
-      line.width,
-      line.opacity,
-      fill.on,
-      fill.opacity,
-      dpr,
-      s.paths.map((p) => p.color.join(',')).join(';'),
-    ].join('|');
-    if (this.layers && this.layerKey === key) return this.layers;
-
-    const [x0, y0, x1, y1] = s.plotRect;
-    // Layers cover the plot rect (plus stroke bleed) rather than the whole
-    // canvas — same pixels, a fraction of the memory on a wide chart.
-    const left = Math.max(0, Math.floor(x0 * s.deviceW) - LAYER_PAD_PX);
-    const top = Math.max(0, Math.floor((1 - y1) * s.deviceH) - LAYER_PAD_PX);
-    const right = Math.min(s.deviceW, Math.ceil(x1 * s.deviceW) + LAYER_PAD_PX);
-    const bottom = Math.min(s.deviceH, Math.ceil((1 - y0) * s.deviceH) + LAYER_PAD_PX);
-    const lw = Math.max(1, right - left);
-    const lh = Math.max(1, bottom - top);
-
-    // Stacked bands must tile without gaps, so their edges are straight (a spline
-    // top wouldn't meet the next band's straight floor). Plain areas keep spline.
-    const splineWanted = line.style === 'spline' && !s.stacked;
-    const layers: SeriesLayer[] = [];
-
-    for (const path of s.paths) {
-      const canvas = this.layers?.[layers.length]?.canvas ?? document.createElement('canvas');
-      if (canvas.width !== lw) canvas.width = lw;
-      if (canvas.height !== lh) canvas.height = lh;
-      const lctx = canvas.getContext('2d');
-      if (!lctx) continue;
-      lctx.clearRect(0, 0, lw, lh);
-      layers.push({ canvas, left, top });
-
-      const n = path.points.length;
-      if (n === 0) continue;
-      const xs = new Float64Array(n);
-      const ys = new Float64Array(n);
-      const bases = new Float64Array(n);
-      for (let i = 0; i < n; i++) {
-        const m = s.metas[path.points[i]!]!;
-        xs[i] = dx(m.pos) - left;
-        ys[i] = dy(m.height) - top;
-        bases[i] = dy(m.baseHeight) - top;
-      }
-      const spacing = n > 1 ? Math.abs(xs[n - 1]! - xs[0]!) / (n - 1) : Number.POSITIVE_INFINITY;
-      const spline = splineWanted && spacing >= SPLINE_MIN_SPACING_PX;
-
-      if (fill.on) {
-        lctx.beginPath();
-        lctx.moveTo(xs[0]!, bases[0]!);
-        lctx.lineTo(xs[0]!, ys[0]!);
-        tracePolylinePath(lctx, xs, ys, spline ? 'spline' : 'straight');
-        // Trace the stack floor back under the top edge (reversed) so the band
-        // sits on the series below; for plain areas every base is the baseline.
-        for (let i = n - 1; i >= 0; i--) lctx.lineTo(xs[i]!, bases[i]!);
-        lctx.closePath();
-        lctx.fillStyle = cssRGBA(path.color, fill.opacity);
-        lctx.fill();
-      }
-
-      if (line.on && n > 1) {
-        lctx.beginPath();
-        lctx.moveTo(xs[0]!, ys[0]!);
-        tracePolylinePath(lctx, xs, ys, spline ? 'spline' : 'straight');
-        lctx.strokeStyle = cssRGBA(path.color, line.opacity);
-        lctx.lineWidth = line.width * dpr;
-        // Round joins cost real time on a 5k-segment polyline and are invisible
-        // once points sit within a pixel or two of each other.
-        const cheapJoins = spacing < SPLINE_MIN_SPACING_PX;
-        lctx.lineJoin = cheapJoins ? 'bevel' : 'round';
-        lctx.lineCap = cheapJoins ? 'butt' : 'round';
-        lctx.stroke();
-      }
+  private glyphPath(shape: MarkerShape, sizePx: number): Path2D {
+    const key = `${shape}:${sizePx}`;
+    let p = this.glyphs.get(key);
+    if (!p) {
+      p = buildGlyphPath(shape, sizePx);
+      this.glyphs.set(key, p);
     }
-
-    // Drop any canvases left over from a larger series count.
-    this.layers = layers;
-    this.layerKey = key;
-    return layers;
+    return p;
   }
 
-  /**
-   * Solid area fill + connecting line for each series, opacity scaled by the
-   * reveal factor `s.solid`. Colors are always the series color (only opacity is
-   * configurable). Drawn under the axes/current-value so chrome stays legible.
-   */
-  private drawSeries(
-    s: OverlayState,
+  private drawMarkers(
+    s: ScatterOverlayState,
     dx: (lx: number) => number,
     dy: (ly: number) => number,
     dpr: number,
   ): void {
     const ctx = this.ctx;
-    const layers = this.seriesLayers(s, dx, dy, dpr);
-    const filterSupported = 'filter' in ctx;
+    const style = s.markerStyle;
+    for (const m of s.metas) {
+      const w = s.hoverWeights[m.pointId] ?? 0;
+      const gain = w > HOVER_EPSILON ? 1 + (s.highlightGain - 1) * w : 1;
+      const shape = shapeForSeries(style, m.seriesIndex);
+      const sizePx = sizeForSeries(style, m.seriesIndex) * dpr;
+      const path = this.glyphPath(shape, sizePx);
+      const color = gainedRGBA(m.color, gain);
+      const alpha = style.opacity * s.solid;
 
-    for (let si = 0; si < s.paths.length; si++) {
-      const path = s.paths[si]!;
-      const layer = layers[si];
-      if (!layer || path.points.length === 0) continue;
-      // All of a series' points share the same eased weight; take the first.
-      const w = s.hoverWeights[path.points[0]!] ?? 0;
-      const gain = w > 0 ? 1 + (s.highlightGain - 1) * w : 1;
+      ctx.save();
+      ctx.translate(dx(m.cx), dy(m.cy));
+      if (shape === 'asterisk') {
+        ctx.strokeStyle = cssRGBA(color, alpha);
+        ctx.lineWidth = Math.max(1, sizePx * 0.18);
+        ctx.lineCap = 'round';
+        ctx.stroke(path);
+      } else {
+        ctx.fillStyle = cssRGBA(color, alpha);
+        ctx.fill(path);
+      }
+      ctx.restore();
+    }
+  }
 
-      // Per-layer opacity is already baked in; `solid` scales the whole reveal.
-      ctx.globalAlpha = s.solid;
-      // brightness() multiplies rgb and leaves alpha alone — the same thing the
-      // old per-draw rgb gain did, so highlighting matches.
-      if (gain !== 1 && filterSupported) ctx.filter = `brightness(${gain})`;
-      ctx.drawImage(layer.canvas, layer.left, layer.top);
-      ctx.filter = 'none';
+  /**
+   * The current fitted approximation path per series, recomputed only when
+   * `geomVersion` changes (rebuild or morph tick) — not on every hover repaint.
+   */
+  private approximationPaths(s: ScatterOverlayState): ApproximationPath[] {
+    if (this.approxCache && this.approxCache.key === s.geomVersion) return this.approxCache.paths;
+    const paths = computeApproximationPaths(s.metas, s.approx.strategy);
+    this.approxCache = { key: s.geomVersion, paths };
+    return paths;
+  }
+
+  private drawApproximation(
+    s: ScatterOverlayState,
+    dx: (lx: number) => number,
+    dy: (ly: number) => number,
+    dpr: number,
+  ): void {
+    const ctx = this.ctx;
+    for (const path of this.approximationPaths(s)) {
+      if (path.points.length < 2) continue;
+      ctx.beginPath();
+      ctx.moveTo(dx(path.points[0]!.x), dy(path.points[0]!.y));
+      for (let i = 1; i < path.points.length; i++) {
+        ctx.lineTo(dx(path.points[i]!.x), dy(path.points[i]!.y));
+      }
+      ctx.globalAlpha = s.solid * s.approx.opacity;
+      ctx.strokeStyle = s.approx.color ?? cssRGBA(path.color);
+      ctx.lineWidth = s.approx.width * dpr;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
       ctx.globalAlpha = 1;
     }
   }
 
   private drawYAxis(
-    s: OverlayState,
+    s: ScatterOverlayState,
     leftPx: number,
     rightPx: number,
     topPx: number,
@@ -357,8 +304,6 @@ export class Overlay {
     ctx.stroke();
 
     let maxLabelW = 0;
-    // Under pan/zoom, ticks slide along the axis: clip the band vertically so
-    // ticks/labels/grid that scroll past the plot's top/bottom are hidden.
     this.clip(s.clipToPlot, 0, topPx, rightPx, bottomPx - topPx, () => {
       for (const t of s.axes.y) {
         const py = dy(t.pos);
@@ -394,7 +339,7 @@ export class Overlay {
   }
 
   private drawXAxis(
-    s: OverlayState,
+    s: ScatterOverlayState,
     leftPx: number,
     rightPx: number,
     topPx: number,
@@ -426,8 +371,6 @@ export class Overlay {
     ctx.lineTo(rightPx, bottomPx);
     ctx.stroke();
 
-    // Clip the band horizontally so X ticks/labels/grid that scroll past the
-    // plot's left/right edges are hidden under pan/zoom.
     this.clip(s.clipToPlot, leftPx, 0, rightPx - leftPx, s.deviceH, () => {
       for (const t of s.axes.x) {
         const px = dx(t.pos);
@@ -458,8 +401,7 @@ export class Overlay {
   /**
    * A filled highlight label pinned to an axis: `'y'` sits just left of the value
    * axis, vertically centered on `py`; `'x'` sits just below the X axis,
-   * horizontally centered on `px`. Dark text over the axis color reads as a lit
-   * tick at the cursor's row/column.
+   * horizontally centered on `px`.
    */
   private drawAxisMarker(
     px: number,
@@ -490,7 +432,7 @@ export class Overlay {
   }
 
   private drawCurrentValue(
-    s: OverlayState,
+    s: ScatterOverlayState,
     leftPx: number,
     rightPx: number,
     topPx: number,
@@ -502,11 +444,10 @@ export class Overlay {
     const cfg = s.chrome.currentValue;
     const p = s.hoveredPoint!;
     const ctx = this.ctx;
-    const cx = dx(p.pos);
-    const cy = dy(p.height);
+    const cx = dx(p.cx);
+    const cy = dy(p.cy);
     const onAxis = cfg.mode === 'axis';
 
-    // Guide line(s) to the hovered vertex.
     if (cfg.guideY || cfg.guideX) {
       ctx.save();
       ctx.strokeStyle = cfg.color;
@@ -528,7 +469,6 @@ export class Overlay {
       ctx.restore();
     }
 
-    // Marker dot at the hovered vertex whenever a guide is shown.
     if (cfg.guideY || cfg.guideX) {
       ctx.save();
       ctx.fillStyle = cssRGBA(p.color);
@@ -538,20 +478,20 @@ export class Overlay {
       ctx.restore();
     }
 
-    // Highlighted value markers on the axes.
     if (s.chrome.y.show && (onAxis || (cfg.markers && cfg.guideY))) {
-      this.drawAxisMarker(leftPx, cy, formatNumber(p.yValue), 'y', cfg.color, dpr);
+      const yLabel = typeof p.yValue === 'number' ? formatNumber(p.yValue) : String(p.yValue);
+      this.drawAxisMarker(leftPx, cy, yLabel, 'y', cfg.color, dpr);
     }
     if (s.chrome.x.show && (onAxis || (cfg.markers && cfg.guideX))) {
-      this.drawAxisMarker(cx, bottomPx, scalarLabel(p.xValue), 'x', cfg.color, dpr);
+      const xLabel = typeof p.xValue === 'number' ? formatNumber(p.xValue) : String(p.xValue);
+      this.drawAxisMarker(cx, bottomPx, xLabel, 'x', cfg.color, dpr);
     }
 
-    // In 'axis' mode the readout lives on the axes; skip the floating box.
     if (onAxis) return;
 
     // `currentValue.format` is shared with the bar chart (typed for BarMeta);
-    // for a line chart it receives this vertex's LineMeta.
-    const fmt = cfg.format as unknown as ((p: LineMeta) => string) | undefined;
+    // for a scatter chart it receives this point's ScatterMeta.
+    const fmt = cfg.format as unknown as ((p: ScatterMeta) => string) | undefined;
     const text = (fmt ?? defaultFormat)(p);
     const fontPx = 12 * dpr;
     ctx.font = `${fontPx}px system-ui, sans-serif`;
