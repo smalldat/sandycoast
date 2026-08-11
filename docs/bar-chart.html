@@ -142,6 +142,23 @@
       </tbody>
     </table>
 
+    <h3 id="interactiondim"><code>interaction.dim</code> — legend click-to-isolate tuning</h3>
+    <p>Has no effect until a series is actually isolated — via a click on an <a href="#legend"><code>legend.interactive</code></a>
+      entry, or a call to <a href="#methods"><code>focusSeries(index)</code></a>. Both are the same code
+      path, so a click and a programmatic call always agree and both fire <a href="#events"><code>seriesFocus</code></a>.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>opacity</code></td><td class="type">number (0..1)</td><td class="def">0.15</td><td>Opacity of every dimmed (non-isolated) series — grains, and any solid fill/border/line/marker layer.</td></tr>
+        <tr><td><code>fadeMs</code></td><td class="type">number (ms)</td><td class="def">200</td><td>Ease in/out time for the dim transition, mirroring <code>interaction.hover.fadeMs</code>.</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">BarChart</span>(el, {
+  data,
+  legend: { show: <span class="tok-key">true</span>, interactive: <span class="tok-key">true</span> },   <span class="tok-com">// click an entry to isolate it</span>
+  interaction: { dim: { opacity: <span class="tok-num">0.1</span>, fadeMs: <span class="tok-num">300</span> } },
+});</code></pre>
+
     <h2 id="axes"><code>axes.x</code> / <code>axes.y</code> — <span class="type" style="font-size:15px">AxisConfig</span></h2>
     <p>Each axis is off until you set <code>show: true</code>. Both axes share the same shape.</p>
     <table class="prop-table">
@@ -168,6 +185,7 @@
         <tr><td><code>position</code></td><td class="type">'left' | 'right' | 'top' | 'bottom'</td><td class="def">'bottom'</td><td>Which edge to place it on.</td></tr>
         <tr><td><code>align</code></td><td class="type">'start' | 'center' | 'end'</td><td class="def">'center'</td><td>Cross-axis alignment.</td></tr>
         <tr><td><code>swatch</code></td><td class="type">'disc' | 'square'</td><td class="def">follows grain shape</td><td>Swatch shape.</td></tr>
+        <tr><td><code>interactive</code></td><td class="type">boolean</td><td class="def">false</td><td>Click an entry to isolate it — every other series dims (see <a href="#interaction">interaction.dim</a>) — and click it again to clear. Off by default; the legend stays purely presentational until you opt in.</td></tr>
       </tbody>
     </table>
 
@@ -252,6 +270,9 @@
         <tr><td><code>whenReady(): Promise&lt;void&gt;</code></td><td>Resolves once the backend is initialized and the first frame is scheduled.</td></tr>
         <tr><td><code>get backend</code></td><td><code>'webgpu' | 'webgl2' | 'canvas2d' | null</code> — the active backend, or <code>null</code> before ready.</td></tr>
         <tr><td><code>on('hover', fn)</code></td><td>Subscribe to hover; returns an unsubscribe function.</td></tr>
+        <tr><td><code>on('seriesFocus', fn)</code></td><td>Subscribe to legend isolation changes; returns an unsubscribe function. See <a href="#events">Events</a>.</td></tr>
+        <tr><td><code>focusSeries(index)</code></td><td>Isolate one series by index — it stays full opacity, every other series dims to <code>interaction.dim.opacity</code>. Pass <code>null</code> to clear. Equivalent to clicking that series' <a href="#legend"><code>legend.interactive</code></a> entry; fires <code>seriesFocus</code>.</td></tr>
+        <tr><td><code>getFocusedSeries()</code></td><td><code>number | null</code> — the currently isolated series index, or <code>null</code>.</td></tr>
         <tr><td><code>update(data)</code> / <code>update(patches)</code></td><td>Replace the whole dataset, or — given <code>PointPatch[]</code> — set <code>y</code> on existing points in place. Grains morph; the solid layer tweens (no re-pour).</td></tr>
         <tr><td><code>add(points)</code></td><td>Append one or more points; new bars grow in and their grains enter per <code>animation.enter</code>.</td></tr>
         <tr><td><code>remove(refs)</code></td><td>Remove points by index (negative = from end) or <code>{ x, z? }</code> match; bars reflow.</td></tr>
@@ -266,8 +287,7 @@
     </table>
 
     <h2 id="events">Events</h2>
-    <p>The only event is <code>hover</code>, carrying <code>{ bar: BarMeta | null }</code>
-      (<code>null</code> on pointer-leave).</p>
+    <p><code>hover</code> carries <code>{ bar: BarMeta | null }</code> (<code>null</code> on pointer-leave).</p>
     <pre><code><span class="tok-com">// BarMeta — metadata for one drawn bar</span>
 {
   barId: <span class="tok-typ">number</span>;
@@ -278,6 +298,12 @@
   x0: <span class="tok-typ">number</span>; x1: <span class="tok-typ">number</span>;  <span class="tok-com">// layout-space extents [0,1]</span>
   height: <span class="tok-typ">number</span>;
   color: <span class="tok-typ">RGBA</span>;            <span class="tok-com">// [r,g,b,a] in 0..1</span>
+}</code></pre>
+    <p><code>seriesFocus</code> fires whenever the isolated series changes — from a legend click <strong>or</strong>
+      a <code>focusSeries()</code> call, both the same code path.</p>
+    <pre><code><span class="tok-com">// SeriesFocusPayload</span>
+{
+  index: <span class="tok-typ">number | null</span>;   <span class="tok-com">// null = every series shown at full opacity</span>
 }</code></pre>
 
     <h2 id="examples">Examples</h2>
@@ -326,6 +352,20 @@ chart.<span class="tok-fn">remove</span>([-<span class="tok-num">1</span>]);    
   tooltip.textContent = <span class="tok-str">`</span>${bar.seriesKey} · ${bar.yValue}<span class="tok-str">`</span>;
 });
 <span class="tok-com">// later: off();  // unsubscribe</span></code></pre>
+
+    <h3>Series dimming — click a legend entry to isolate it</h3>
+    <pre><code><span class="tok-key">const</span> chart = <span class="tok-key">new</span> <span class="tok-fn">BarChart</span>(el, {
+  data,
+  legend: { show: <span class="tok-key">true</span>, interactive: <span class="tok-key">true</span> },
+  interaction: { dim: { opacity: <span class="tok-num">0.15</span> } },
+});
+
+chart.<span class="tok-fn">on</span>(<span class="tok-str">'seriesFocus'</span>, ({ index }) => {
+  readout.textContent = index === <span class="tok-key">null</span> ? <span class="tok-str">'all series shown'</span> : <span class="tok-str">`isolated: series </span>${index}<span class="tok-str">`</span>;
+});
+
+<span class="tok-com">// Or drive it from code — same effect, same event, as clicking the legend:</span>
+clearButton.addEventListener(<span class="tok-str">'click'</span>, () => chart.<span class="tok-fn">focusSeries</span>(<span class="tok-key">null</span>));</code></pre>
 
     <div class="foot">
       <p>© <span id="yr">2026</span> · <a href="license.html">License</a> ·
