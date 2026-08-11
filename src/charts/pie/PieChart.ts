@@ -486,8 +486,7 @@ export class PieChart {
   private solidDimActive(): boolean {
     if (!this.style.enabled) return false;
     if (this.focusedSlice !== null) return true;
-    for (let i = 0; i < this.dimWeights.length; i++)
-      if (this.dimWeights[i]! > 0.001) return true;
+    for (let i = 0; i < this.dimWeights.length; i++) if (this.dimWeights[i]! > 0.001) return true;
     return false;
   }
 

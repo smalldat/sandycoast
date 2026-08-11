@@ -450,8 +450,7 @@ export class LineChart implements PanZoomable {
   private solidDimActive(): boolean {
     if (!this.lineStyle.enabled) return false;
     if (this.focusedSeries !== null) return true;
-    for (let i = 0; i < this.dimWeights.length; i++)
-      if (this.dimWeights[i]! > 0.001) return true;
+    for (let i = 0; i < this.dimWeights.length; i++) if (this.dimWeights[i]! > 0.001) return true;
     return false;
   }
 

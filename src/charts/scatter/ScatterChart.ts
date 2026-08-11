@@ -26,12 +26,7 @@ import { type AxisModel, buildAxes } from './axis.js';
 import { type ScatterLayout, layoutScatter } from './layout.js';
 import { type ResolvedMarkerStyle, resolveMarkerStyle, revealFactor } from './markerStyle.js';
 import { Overlay } from './overlay.js';
-import type {
-  HoverPayload,
-  ScatterChartConfig,
-  ScatterMeta,
-  SeriesFocusPayload,
-} from './types.js';
+import type { HoverPayload, ScatterChartConfig, ScatterMeta, SeriesFocusPayload } from './types.js';
 
 interface Resolved {
   grainDensity: number;
@@ -464,8 +459,7 @@ export class ScatterChart implements PanZoomable {
   private solidDimActive(): boolean {
     if (!this.markerStyle.enabled) return false;
     if (this.focusedSeries !== null) return true;
-    for (let i = 0; i < this.dimWeights.length; i++)
-      if (this.dimWeights[i]! > 0.001) return true;
+    for (let i = 0; i < this.dimWeights.length; i++) if (this.dimWeights[i]! > 0.001) return true;
     return false;
   }
 
