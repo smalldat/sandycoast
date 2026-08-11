@@ -24,15 +24,18 @@ function apply(): void {
 apply();
 
 /**
- * A segmented two-option switch. Returns the element; `onPick` fires only when
- * the value actually changes.
+ * A segmented two-option switch. `onPick` fires only when the value actually
+ * changes (i.e. from a click, not from `setValue`). Returns the element plus
+ * `setValue`, so a caller can sync the visible selection to a value that
+ * changed for some other reason (here: switching to a demo with a different
+ * `preferredLayout`).
  */
 function segmented<T extends string>(
   title: string,
   options: { value: T; label: string; title: string }[],
   initial: T,
   onPick: (value: T) => void,
-): HTMLElement {
+): { el: HTMLElement; setValue: (value: T) => void } {
   let current = initial;
   const wrap = document.createElement('div');
   wrap.className = 'seg';
@@ -41,6 +44,7 @@ function segmented<T extends string>(
 
   const buttons = new Map<T, HTMLButtonElement>();
   const select = (value: T): void => {
+    current = value;
     for (const [v, b] of buttons) {
       const on = v === value;
       b.classList.toggle('active', on);
@@ -56,15 +60,23 @@ function segmented<T extends string>(
     b.title = o.title;
     b.addEventListener('click', () => {
       if (o.value === current) return;
-      current = o.value;
-      select(current);
+      select(o.value);
       onPick(current);
     });
     buttons.set(o.value, b);
     wrap.append(b);
   }
   select(current);
-  return wrap;
+  return { el: wrap, setValue: select };
+}
+
+export interface ChromeApi {
+  /**
+   * Apply `defaultLayout` (a demo's `preferredLayout`) unless the user has
+   * already touched the layout toggle themselves — at that point their choice
+   * is a sticky global preference and per-demo defaults stop applying.
+   */
+  applyLayoutForDemo(defaultLayout: Chrome['layout']): void;
 }
 
 /**
@@ -76,10 +88,10 @@ export function initChrome(
   mount: HTMLElement,
   host: HTMLElement,
   onThemeChange: (from: ThemeName, to: ThemeName) => void,
-): void {
+): ChromeApi {
   apply();
 
-  const theme = segmented<Chrome['theme']>(
+  const themeCtl = segmented<Chrome['theme']>(
     'Theme',
     [
       { value: 'light', label: '☀', title: 'Light theme' },
@@ -95,7 +107,7 @@ export function initChrome(
     },
   );
 
-  const layout = segmented<Chrome['layout']>(
+  const layoutCtl = segmented<Chrome['layout']>(
     'Layout',
     [
       { value: 'tb', label: '▤', title: 'Top–bottom: controls below the chart' },
@@ -104,6 +116,7 @@ export function initChrome(
     chrome.layout,
     (v) => {
       chrome.layout = v;
+      chrome.layoutTouched = true;
       apply();
       saveChrome(chrome);
     },
@@ -119,7 +132,18 @@ export function initChrome(
   fit.addEventListener('click', () => resetChartSize(host));
 
   // Layout first, then theme, so the theme switch sits right before the links.
-  mount.prepend(fit, layout, theme);
+  mount.prepend(fit, layoutCtl.el, themeCtl.el);
+
+  return {
+    applyLayoutForDemo(defaultLayout) {
+      if (chrome.layoutTouched) return;
+      chrome.layout = defaultLayout;
+      apply();
+      layoutCtl.setValue(defaultLayout);
+      // Intentionally not persisted: this is a per-demo default standing in
+      // until the user picks a layout themselves, not a saved preference.
+    },
+  };
 }
 
 let sizeObserver: ResizeObserver | null = null;

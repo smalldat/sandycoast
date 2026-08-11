@@ -38,6 +38,7 @@ import {
   type HoverPayload,
   type PieChartConfig,
   type SeriesChangePayload,
+  type SeriesFocusPayload,
   type SliceMeta,
 } from './types.js';
 
@@ -65,6 +66,10 @@ interface Resolved {
   hoverJitterAmp: number;
   hoverOpacity: number;
   hoverFade: number;
+  /** Alpha multiplier for a fully-dimmed (isolated-out) slice. */
+  dimOpacity: number;
+  /** Dim ease in/out time, seconds. */
+  dimFade: number;
   /** Geometry knobs, minus the series index (which is live state). */
   geometry: Omit<PieLayoutOptions, 'seriesIndex'>;
 }
@@ -95,6 +100,8 @@ function resolve(cfg: PieChartConfig): Resolved {
     hoverJitterAmp: hover?.jitterAmp ?? 0.008,
     hoverOpacity: hover?.opacity ?? 1,
     hoverFade: (hover?.fadeMs ?? 180) / 1000,
+    dimOpacity: cfg.interaction?.dim?.opacity ?? 0.15,
+    dimFade: (cfg.interaction?.dim?.fadeMs ?? 200) / 1000,
     geometry: {
       maxSlices: cfg.maxSlices ?? DEFAULT_MAX_SLICES,
       maxSeries: cfg.maxSeries ?? DEFAULT_MAX_SERIES,
@@ -106,7 +113,11 @@ function resolve(cfg: PieChartConfig): Resolved {
   };
 }
 
-type Events = { hover: HoverPayload; seriesChange: SeriesChangePayload };
+type Events = {
+  hover: HoverPayload;
+  seriesChange: SeriesChangePayload;
+  seriesFocus: SeriesFocusPayload;
+};
 
 /** How grains enter on a build: fresh pour vs. morph from the prior state. */
 type BuildMode = 'pour' | 'morph';
@@ -211,6 +222,15 @@ export class PieChart {
   private hoveredSliceId = -1;
   /** Per-slice hover weight in [0,1], eased toward 1 for the hovered slice. */
   private hoverWeights = new Float32Array(0);
+  /**
+   * Slice index isolated via the legend / `focusSeries()`, or null. Named
+   * `focusedSlice` internally — "series" here means the legend's entries,
+   * which for the pie chart are slices of the currently displayed series,
+   * not the slider's series (see `focusSeries`'s doc comment).
+   */
+  private focusedSlice: number | null = null;
+  /** Per-slice dim weight in [0,1], eased toward 1 for non-focused slices. */
+  private dimWeights = new Float32Array(0);
 
   // --- Series slider state -------------------------------------------------
   /** Selected series index (the value the slider represents). */
@@ -278,7 +298,9 @@ export class PieChart {
     this.overlayCanvas = oc;
     this.overlay = new PieOverlay(oc);
 
-    if (this.chrome.legend.show) this.legend = new Legend(this.el, this.chrome.legend);
+    if (this.chrome.legend.show) {
+      this.legend = new Legend(this.el, this.chrome.legend, (i) => this.handleLegendClick(i));
+    }
     if (this.chrome.title.show) this.title = new Title(this.el, this.chrome.title);
   }
 
@@ -341,9 +363,44 @@ export class PieChart {
     const layout = this.layout;
     if (!layout) return;
     this.ticks = this.sliderCfg.show ? sliderTicks(layout.series, this.chrome.x) : [];
-    if (this.legend) this.legend.setEntries(this.legendEntries());
+    if (this.legend) {
+      this.legend.setEntries(this.legendEntries());
+      this.legend.setFocus(this.focusedSlice);
+    }
     this.recomputeRects();
     this.drawOverlay();
+  }
+
+  /** Legend entry `i` was clicked: toggle isolation of slice `i`. */
+  private handleLegendClick(i: number): void {
+    this.setFocus(this.focusedSlice === i ? null : i);
+  }
+
+  private setFocus(index: number | null): void {
+    if (index === this.focusedSlice) return;
+    this.focusedSlice = index;
+    this.legend?.setFocus(index);
+    this.emitter.emit('seriesFocus', { index });
+  }
+
+  /**
+   * Isolate one legend entry by index — it stays at full opacity, every other
+   * entry dims to `interaction.dim.opacity`. `null` clears the isolation.
+   * Equivalent to clicking that entry's legend; fires `seriesFocus`.
+   *
+   * On the pie chart, the legend's entries are **slices of the currently
+   * displayed series** (see {@link legendEntries}), not the slider's series —
+   * so `index` addresses a slice, not what {@link setSeriesIndex} addresses.
+   * The method is named the same as the other charts' for a consistent public
+   * API; this doc note is the one place that consistency costs a wrinkle.
+   */
+  focusSeries(index: number | null): void {
+    this.setFocus(index);
+  }
+
+  /** Currently isolated slice index (see {@link focusSeries}), or `null`. */
+  getFocusedSeries(): number | null {
+    return this.focusedSlice;
   }
 
   /** Legend entries describe the **slices** (the pie's categories). */
@@ -400,6 +457,8 @@ export class PieChart {
       solid,
       hoverWeights: this.hoverWeights,
       highlightGain: this.cfg.hoverEffects.has('highlight') ? this.cfg.highlightGain : 1,
+      dimWeights: this.dimWeights,
+      dimOpacity: this.cfg.dimOpacity,
       hoveredSlice: this.hovered,
       pointer: this.pointerPx,
       slider: this.sliderCfg,
@@ -420,6 +479,15 @@ export class PieChart {
     if (this.hoveredSliceId !== -1) return true;
     for (let i = 0; i < this.hoverWeights.length; i++)
       if (this.hoverWeights[i]! > 0.001) return true;
+    return false;
+  }
+
+  /** Whether the dim transition is still easing (needs the solid layer to keep repainting). */
+  private solidDimActive(): boolean {
+    if (!this.style.enabled) return false;
+    if (this.focusedSlice !== null) return true;
+    for (let i = 0; i < this.dimWeights.length; i++)
+      if (this.dimWeights[i]! > 0.001) return true;
     return false;
   }
 
@@ -492,10 +560,21 @@ export class PieChart {
     this.seriesIndex = layout.seriesIndex;
     this.geomVersion++;
 
+    // Clamp focus regardless of whether a legend is mounted — focusSeries()
+    // works without one, and a stale out-of-range index would otherwise dim
+    // every slice (none would match it).
+    if (this.focusedSlice !== null && this.focusedSlice >= metas.length) {
+      this.focusedSlice = null;
+    }
+
     // Resize hover weights to slice count, preserving overlapping indices.
     const weights = new Float32Array(metas.length);
     weights.set(this.hoverWeights.subarray(0, Math.min(metas.length, this.hoverWeights.length)));
     this.hoverWeights = weights;
+
+    const dimWeights = new Float32Array(metas.length);
+    dimWeights.set(this.dimWeights.subarray(0, Math.min(metas.length, this.dimWeights.length)));
+    this.dimWeights = dimWeights;
 
     const counts = wedgeGrainCounts(wedges, {
       density: this.cfg.grainDensity,
@@ -766,6 +845,7 @@ export class PieChart {
     this.lastFrameMs = nowMs;
     this.fps?.sample(dt, nowMs);
     this.easeHoverWeights(dt);
+    this.easeDimWeights(dt);
     const handleMoved = this.easeHandle(dt);
     const now = (nowMs - this.startTime) / 1000;
     this.renderer.frame(this.uniforms(now));
@@ -776,7 +856,12 @@ export class PieChart {
         this.drawOverlay(now);
       } else {
         const solid = this.revealState(now).solid;
-        if (solid !== this.lastSolid || this.solidHoverActive() || this.overlayDirty) {
+        if (
+          solid !== this.lastSolid ||
+          this.solidHoverActive() ||
+          this.solidDimActive() ||
+          this.overlayDirty
+        ) {
           this.drawOverlay(now);
         }
       }
@@ -795,6 +880,18 @@ export class PieChart {
     const k = this.cfg.hoverFade > 0 && dt > 0 ? 1 - Math.exp(-dt / this.cfg.hoverFade) : 1;
     for (let i = 0; i < w.length; i++) {
       const target = i === this.hoveredSliceId ? 1 : 0;
+      const next = w[i]! + (target - w[i]!) * k;
+      w[i] = Math.abs(next - target) < 0.001 ? target : next;
+    }
+  }
+
+  // Ease each slice's dim weight toward its target: 1 for every slice other
+  // than the focused one, 0 when nothing is focused.
+  private easeDimWeights(dt: number): void {
+    const w = this.dimWeights;
+    const k = this.cfg.dimFade > 0 && dt > 0 ? 1 - Math.exp(-dt / this.cfg.dimFade) : 1;
+    for (let i = 0; i < w.length; i++) {
+      const target = this.focusedSlice !== null && i !== this.focusedSlice ? 1 : 0;
       const next = w[i]! + (target - w[i]!) * k;
       w[i] = Math.abs(next - target) < 0.001 ? target : next;
     }
@@ -836,6 +933,8 @@ export class PieChart {
       highlightGain: useHighlight ? this.cfg.highlightGain : 1,
       hoverJitterAmp: useJitter ? this.cfg.hoverJitterAmp : 0,
       hoverOpacity: useOpacity ? this.cfg.hoverOpacity : -1,
+      dimWeights: this.dimWeights,
+      dimOpacity: this.cfg.dimOpacity,
       settleJitterAmp: this.cfg.settleJitter,
       background: this.cfg.background,
       // Grains live in the square disc box, which is what makes the pie round.

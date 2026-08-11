@@ -99,12 +99,24 @@ const CHROME_KEY = `smalldat:playground:chrome:v${VERSION}`;
 export interface Chrome {
   theme: 'dark' | 'light';
   layout: 'tb' | 'lr';
+  /**
+   * Whether the user has ever clicked the layout toggle. Until they do, each
+   * demo opens in its own `preferredLayout` instead of this saved `layout`
+   * value — see `chrome.ts`'s `applyLayoutForDemo`.
+   */
+  layoutTouched: boolean;
   /** User-dragged chart size in px, shared by every demo. `null` = auto. */
   chartW: number | null;
   chartH: number | null;
 }
 
-export const DEFAULT_CHROME: Chrome = { theme: 'dark', layout: 'tb', chartW: null, chartH: null };
+export const DEFAULT_CHROME: Chrome = {
+  theme: 'dark',
+  layout: 'tb',
+  layoutTouched: false,
+  chartW: null,
+  chartH: null,
+};
 
 function finitePx(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : null;
@@ -120,6 +132,7 @@ export function loadChrome(): Chrome {
     return {
       theme: parsed.theme === 'light' ? 'light' : 'dark',
       layout: parsed.layout === 'lr' ? 'lr' : 'tb',
+      layoutTouched: parsed.layoutTouched === true,
       chartW: finitePx(parsed.chartW),
       chartH: finitePx(parsed.chartH),
     };

@@ -2,10 +2,12 @@ import type { RevealConfig } from '../../core/chrome/reveal.js';
 import type {
   AxisConfig,
   CurrentValueConfig as CurrentValueConfigOf,
+  DimConfig,
   FpsConfig,
   FpsPosition,
   HoverEffect,
   LegendConfig,
+  SeriesFocusPayload,
   Side,
   TitleConfig,
 } from '../../core/chrome/types.js';
@@ -17,7 +19,17 @@ import type { PanZoomConfig } from '../../core/view/types.js';
 
 // Chrome config is shared by every visual and lives in `core`; re-exported here
 // so the bar chart's public surface is unchanged.
-export type { AxisConfig, FpsConfig, FpsPosition, HoverEffect, LegendConfig, Side, TitleConfig };
+export type {
+  AxisConfig,
+  DimConfig,
+  FpsConfig,
+  FpsPosition,
+  HoverEffect,
+  LegendConfig,
+  SeriesFocusPayload,
+  Side,
+  TitleConfig,
+};
 
 /** Hover readout config, with `format` typed against {@link BarMeta}. */
 export type CurrentValueConfig = CurrentValueConfigOf<BarMeta>;
@@ -120,6 +132,8 @@ export interface BarChartConfig {
        */
       fadeMs?: number;
     };
+    /** Legend click-to-isolate tuning; see {@link LegendConfig.interactive}. */
+    dim?: DimConfig;
   };
   /** X and Y axes; each off by default. */
   axes?: {

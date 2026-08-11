@@ -11,7 +11,7 @@ struct Uniforms {
   background : vec4<f32>,
   // plot rect the layout box maps into: x0, y0, x1, y1 (normalized, y-up)
   plot : vec4<f32>,
-  // hoverOpacity (<0 = disabled), reserved, reserved, reserved
+  // hoverOpacity (<0 = disabled), dimOpacity (<0 = disabled), reserved, reserved
   d : vec4<f32>,
   // pan/zoom: scaleX, scaleY, offsetX, offsetY (layout space)
   view : vec4<f32>,
@@ -21,6 +21,9 @@ struct Uniforms {
 @group(0) @binding(1) var<storage, read> palette : array<vec4<f32>>;
 // Per-bar hover weight in [0,1]; eased on the CPU for smooth enter/leave.
 @group(0) @binding(2) var<storage, read> hoverW : array<f32>;
+// Per-bar dim weight in [0,1] (legend isolation); eased on the CPU, independent
+// of hoverW so isolating a series composes with hover instead of replacing it.
+@group(0) @binding(3) var<storage, read> dimW : array<f32>;
 
 struct VsOut {
   @builtin(position) pos : vec4<f32>,
@@ -50,6 +53,7 @@ fn vs(
   let viewport = U.b.xy;
   let seed = md.y;
   let hw = hoverW[u32(ids.y)];
+  let dw = dimW[u32(ids.y)];
 
   let t = (now - md.x) / duration;
   let te = easeApply(t, easingKind);
@@ -93,7 +97,13 @@ fn vs(
   // negative value disables it so alpha stays at grainFade.
   let hoverOpacity = U.d.x;
   let opOn = select(0.0, 1.0, hoverOpacity >= 0.0);
-  let alpha = mix(grainFade, max(hoverOpacity, 0.0), hw * opOn);
+  var alpha = mix(grainFade, max(hoverOpacity, 0.0), hw * opOn);
+  // Dim effect: lerp alpha down toward dimOpacity by the (eased) dim weight; a
+  // negative dimOpacity disables it so alpha is unaffected regardless of dw.
+  let dimOpacity = U.d.y;
+  let dimOn = select(0.0, 1.0, dimOpacity >= 0.0);
+  let dimMul = mix(1.0, max(dimOpacity, 0.0), dw * dimOn);
+  alpha = alpha * dimMul;
   vo.color = vec4<f32>(base.rgb * gain, base.a * alpha);
   return vo;
 }

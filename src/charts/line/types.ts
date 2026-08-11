@@ -2,9 +2,11 @@
 import type {
   AxisConfig,
   CurrentValueConfig as CurrentValueConfigOf,
+  DimConfig,
   FpsConfig,
   HoverEffect,
   LegendConfig,
+  SeriesFocusPayload,
   Side,
   TitleConfig,
 } from '../../core/chrome/types.js';
@@ -14,7 +16,16 @@ import type { BackendPreference } from '../../core/render/pick.js';
 import type { GrainShape, RGBA } from '../../core/render/types.js';
 import type { PanZoomConfig } from '../../core/view/types.js';
 
-export type { AxisConfig, FpsConfig, HoverEffect, LegendConfig, Side, TitleConfig };
+export type {
+  AxisConfig,
+  DimConfig,
+  FpsConfig,
+  HoverEffect,
+  LegendConfig,
+  SeriesFocusPayload,
+  Side,
+  TitleConfig,
+};
 
 /** Hover readout config, with `format` typed against {@link LineMeta}. */
 export type CurrentValueConfig = CurrentValueConfigOf<LineMeta>;
@@ -151,6 +162,8 @@ export interface LineChartConfig {
       /** Enter/leave transition time in ms. Default 180. */
       fadeMs?: number;
     };
+    /** Legend click-to-isolate tuning; see {@link LegendConfig.interactive}. */
+    dim?: DimConfig;
   };
   /** X and Y axes; each off by default. */
   axes?: {

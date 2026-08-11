@@ -63,7 +63,7 @@ function defaultConfig(): Cfg {
     backend: 'auto',
     grain: { sizePx: 2.4, shape: 'disc', jitter: 0.4, settleJitter: 0.02 },
     // Pie geometry. `innerRadius: 0` is a pie; raise it to cut a donut.
-    innerRadius: 0,
+    innerRadius: 0.45,
     radius: 0.92,
     startAngle: 0,
     padAngle: 0,
@@ -72,8 +72,8 @@ function defaultConfig(): Cfg {
     maxSeries: MAX_SERIES,
     slider: { show: true, position: 'bottom', interactive: true, handlePx: 7, trackPx: 3 },
     animation: {
-      duration: 1100,
-      stagger: 700,
+      duration: 500,
+      stagger: 500,
       ease: 'easeOutCubic',
       morphDuration: 1400,
       reflow: 'translate',
@@ -88,13 +88,14 @@ function defaultConfig(): Cfg {
         opacity: 1,
         fadeMs: 180,
       },
+      dim: { opacity: 0.15, fadeMs: 200 },
     },
     // `axes.x` styles the slider's ticks, exactly as it styles the bar chart's
     // category axis.
     axes: {
       x: { show: true, ticks: 6, label: 'month', color: palette.axis, fontPx: 11 },
     },
-    legend: { show: true, position: 'right', align: 'center', swatch: 'disc' },
+    legend: { show: true, position: 'right', align: 'center', swatch: 'disc', interactive: true },
     title: { text: 'Traffic by channel', position: 'top', align: 'center', fontPx: 14 },
     currentValue: { show: true, mode: 'pointer', color: palette.text },
     slices: {
@@ -375,6 +376,27 @@ const GROUPS: ControlGroup[] = [
     ],
   },
   {
+    title: 'Legend dim (click a slice to isolate)',
+    controls: [
+      {
+        kind: 'slider',
+        label: 'Dimmed opacity',
+        path: 'interaction.dim.opacity',
+        min: 0,
+        max: 1,
+        step: 0.05,
+      },
+      {
+        kind: 'slider',
+        label: 'Fade (ms)',
+        path: 'interaction.dim.fadeMs',
+        min: 0,
+        max: 600,
+        step: 20,
+      },
+    ],
+  },
+  {
     title: 'Title & legend',
     controls: [
       { kind: 'text', label: 'Title', path: 'title.text' },
@@ -413,6 +435,11 @@ const GROUPS: ControlGroup[] = [
           { value: 'disc', label: 'disc' },
           { value: 'square', label: 'square' },
         ],
+      },
+      {
+        kind: 'checkbox',
+        label: 'Legend interactive (click a slice to isolate)',
+        path: 'legend.interactive',
       },
     ],
   },
@@ -503,6 +530,7 @@ const GROUPS: ControlGroup[] = [
 class PieChartDemo implements DemoComponent {
   id = 'pie';
   label = 'Pie / donut';
+  preferredLayout = 'lr' as const;
 
   private cfg: Cfg = defaultConfig();
   private data: DataSet = randomData(DEFAULT_SERIES, 5);
@@ -511,6 +539,7 @@ class PieChartDemo implements DemoComponent {
   private statusEl!: HTMLElement;
   private hoverEl!: HTMLElement;
   private seriesEl!: HTMLElement;
+  private focusEl!: HTMLElement;
   private panelEl!: HTMLElement;
   private updTimer: ReturnType<typeof setInterval> | null = null;
   private playTimer: ReturnType<typeof setInterval> | null = null;
@@ -571,7 +600,8 @@ class PieChartDemo implements DemoComponent {
     const contUpd = toggle('Continuous update', (on) =>
       this.setTimer('updTimer', on, 1200, () => this.updateValues()),
     );
-    seriesBar.append(prev, next, play, contUpd);
+    const clearFocus = button('Clear legend focus', () => this.chart?.focusSeries(null));
+    seriesBar.append(prev, next, play, contUpd, clearFocus);
 
     this.statusEl = document.createElement('div');
     this.statusEl.className = 'status';
@@ -580,7 +610,18 @@ class PieChartDemo implements DemoComponent {
     this.hoverEl = document.createElement('div');
     this.hoverEl.className = 'hover';
     this.hoverEl.textContent = 'hover a slice…';
-    host.append(this.chartEl, toolbar, seriesBar, this.statusEl, this.seriesEl, this.hoverEl);
+    this.focusEl = document.createElement('div');
+    this.focusEl.className = 'status';
+    this.focusEl.textContent = 'no slice isolated — click a legend entry (Legend interactive)';
+    host.append(
+      this.chartEl,
+      toolbar,
+      seriesBar,
+      this.statusEl,
+      this.seriesEl,
+      this.hoverEl,
+      this.focusEl,
+    );
 
     this.renderPanel();
     this.build();
@@ -662,6 +703,12 @@ class PieChartDemo implements DemoComponent {
         : 'hover a slice…';
     });
     this.chart.on('seriesChange', () => this.showSeries());
+    this.chart.on('seriesFocus', ({ index }) => {
+      this.focusEl.textContent =
+        index === null
+          ? 'no slice isolated — click a legend entry (Legend interactive)'
+          : `isolated: slice ${index}`;
+    });
   }
 
   private showSeries(): void {

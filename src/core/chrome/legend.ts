@@ -23,9 +23,13 @@ const ALIGN: Record<ResolvedLegend['align'], string> = {
 export class Legend {
   private root: HTMLDivElement;
   private cfg: ResolvedLegend;
+  private onEntryClick: ((index: number) => void) | undefined;
+  private items: HTMLSpanElement[] = [];
+  private focused: number | null = null;
 
-  constructor(host: HTMLElement, cfg: ResolvedLegend) {
+  constructor(host: HTMLElement, cfg: ResolvedLegend, onEntryClick?: (index: number) => void) {
     this.cfg = cfg;
+    this.onEntryClick = onEntryClick;
     this.root = document.createElement('div');
     const s = this.root.style;
     s.position = 'absolute';
@@ -42,12 +46,15 @@ export class Legend {
   /** Rebuild items (series may change on data update). */
   setEntries(entries: LegendEntry[]): void {
     this.root.replaceChildren();
-    for (const e of entries) {
+    this.items = [];
+    const interactive = this.cfg.interactive && !!this.onEntryClick;
+    entries.forEach((e, i) => {
       const item = document.createElement('span');
       item.style.display = 'inline-flex';
       item.style.alignItems = 'center';
       item.style.gap = '5px';
       item.style.whiteSpace = 'nowrap';
+      item.style.transition = 'opacity 120ms ease';
 
       const sw = document.createElement('span');
       sw.style.width = '10px';
@@ -60,9 +67,49 @@ export class Legend {
       label.textContent = e.label;
 
       item.append(sw, label);
+
+      if (interactive) {
+        item.style.pointerEvents = 'auto';
+        item.style.cursor = 'pointer';
+        item.setAttribute('role', 'button');
+        item.setAttribute('tabindex', '0');
+        item.setAttribute('aria-pressed', 'false');
+        item.addEventListener('click', () => this.onEntryClick?.(i));
+        item.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault();
+            this.onEntryClick?.(i);
+          }
+        });
+      }
+
+      this.items.push(item);
       this.root.appendChild(item);
-    }
+    });
+    this.applyFocusStyles();
     this.applyPosition();
+  }
+
+  /**
+   * Reflect the currently isolated entry (or `null` for none) on the legend's
+   * own DOM — dims every other entry's label the same way the chart dims its
+   * grains. Survives independent of `setEntries` so a focus change doesn't
+   * need to rebuild the whole entry list.
+   */
+  setFocus(index: number | null): void {
+    this.focused = index;
+    this.applyFocusStyles();
+  }
+
+  private applyFocusStyles(): void {
+    this.items.forEach((item, i) => {
+      const isFocused = this.focused === null || this.focused === i;
+      item.style.opacity = isFocused ? '1' : '0.4';
+      item.style.fontWeight = this.focused === i ? '600' : 'normal';
+      if (item.getAttribute('role') === 'button') {
+        item.setAttribute('aria-pressed', String(this.focused === i));
+      }
+    });
   }
 
   private applyPosition(): void {

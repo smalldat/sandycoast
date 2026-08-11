@@ -33,6 +33,19 @@ export interface FrameUniforms {
    * disables the effect (alpha stays at `grainFade`).
    */
   hoverOpacity: number;
+  /**
+   * Per-bar dim weight in [0,1] (index = barId), eased for smooth enter/leave —
+   * independent of {@link hoverWeights}, so isolating a series via the legend
+   * composes with hover rather than replacing it. `1` = fully dimmed.
+   */
+  dimWeights: Float32Array;
+  /**
+   * Alpha multiplier for a fully-dimmed grain (`dimWeights` = 1), lerped from
+   * `1` at weight `0`. `-1` disables the effect entirely (alpha unaffected
+   * regardless of `dimWeights`), the same sentinel convention as
+   * {@link hoverOpacity}.
+   */
+  dimOpacity: number;
   /** Baseline settle jitter amplitude (layout units). */
   settleJitterAmp: number;
   /** Background clear color. */

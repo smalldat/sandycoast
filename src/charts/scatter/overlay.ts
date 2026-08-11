@@ -95,6 +95,10 @@ export interface ScatterOverlayState {
   hoverWeights: Float32Array;
   /** Color multiplier for a fully-hovered point (1 = highlight effect off). */
   highlightGain: number;
+  /** Per-point dim weight in [0,1] (index = pointId); dims non-focused series. */
+  dimWeights: Float32Array;
+  /** Alpha multiplier for a fully-dimmed series (1 = no dim). */
+  dimOpacity: number;
   /** Pan/zoom transform applied to layout coords (default identity). */
   viewScale?: [number, number];
   viewOffset?: [number, number];
@@ -215,11 +219,13 @@ export class Overlay {
     for (const m of s.metas) {
       const w = s.hoverWeights[m.pointId] ?? 0;
       const gain = w > HOVER_EPSILON ? 1 + (s.highlightGain - 1) * w : 1;
+      const dw = s.dimWeights[m.pointId] ?? 0;
+      const dimMul = dw > HOVER_EPSILON ? 1 + (s.dimOpacity - 1) * dw : 1;
       const shape = shapeForSeries(style, m.seriesIndex);
       const sizePx = sizeForSeries(style, m.seriesIndex) * dpr;
       const path = this.glyphPath(shape, sizePx);
       const color = gainedRGBA(m.color, gain);
-      const alpha = style.opacity * s.solid;
+      const alpha = style.opacity * s.solid * dimMul;
 
       ctx.save();
       ctx.translate(dx(m.cx), dy(m.cy));
@@ -254,6 +260,16 @@ export class Overlay {
     dpr: number,
   ): void {
     const ctx = this.ctx;
+    // Approximation paths are cached per series (recomputed only on geometry
+    // change, not every frame), so the per-frame-eased dim weight can't live on
+    // the path itself — look it up per series from a representative point's
+    // weight instead (every point of a series shares the same eased target).
+    const dimBySeries = new Map<number, number>();
+    for (const m of s.metas) {
+      if (!dimBySeries.has(m.seriesIndex)) {
+        dimBySeries.set(m.seriesIndex, s.dimWeights[m.pointId] ?? 0);
+      }
+    }
     for (const path of this.approximationPaths(s)) {
       if (path.points.length < 2) continue;
       ctx.beginPath();
@@ -261,7 +277,9 @@ export class Overlay {
       for (let i = 1; i < path.points.length; i++) {
         ctx.lineTo(dx(path.points[i]!.x), dy(path.points[i]!.y));
       }
-      ctx.globalAlpha = s.solid * s.approx.opacity;
+      const dw = dimBySeries.get(path.seriesIndex) ?? 0;
+      const dimMul = dw > HOVER_EPSILON ? 1 + (s.dimOpacity - 1) * dw : 1;
+      ctx.globalAlpha = s.solid * s.approx.opacity * dimMul;
       ctx.strokeStyle = s.approx.color ?? cssRGBA(path.color);
       ctx.lineWidth = s.approx.width * dpr;
       ctx.lineJoin = 'round';

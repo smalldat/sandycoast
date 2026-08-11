@@ -26,7 +26,12 @@ import { type AxisModel, buildAxes } from './axis.js';
 import { type ScatterLayout, layoutScatter } from './layout.js';
 import { type ResolvedMarkerStyle, resolveMarkerStyle, revealFactor } from './markerStyle.js';
 import { Overlay } from './overlay.js';
-import type { HoverPayload, ScatterChartConfig, ScatterMeta } from './types.js';
+import type {
+  HoverPayload,
+  ScatterChartConfig,
+  ScatterMeta,
+  SeriesFocusPayload,
+} from './types.js';
 
 interface Resolved {
   grainDensity: number;
@@ -53,6 +58,10 @@ interface Resolved {
   hoverJitterAmp: number;
   hoverOpacity: number;
   hoverFade: number;
+  /** Alpha multiplier for a fully-dimmed (isolated-out) series. */
+  dimOpacity: number;
+  /** Dim ease in/out time, seconds. */
+  dimFade: number;
 }
 
 function resolve(cfg: ScatterChartConfig): Resolved {
@@ -83,10 +92,12 @@ function resolve(cfg: ScatterChartConfig): Resolved {
     hoverJitterAmp: hover?.jitterAmp ?? 0.008,
     hoverOpacity: hover?.opacity ?? 1,
     hoverFade: (hover?.fadeMs ?? 180) / 1000,
+    dimOpacity: cfg.interaction?.dim?.opacity ?? 0.15,
+    dimFade: (cfg.interaction?.dim?.fadeMs ?? 200) / 1000,
   };
 }
 
-type Events = { hover: HoverPayload };
+type Events = { hover: HoverPayload; seriesFocus: SeriesFocusPayload };
 
 /** How grains enter on a data build: fresh pour vs. morph from the prior state. */
 type BuildMode = 'pour' | 'morph';
@@ -191,6 +202,10 @@ export class ScatterChart implements PanZoomable {
   private hoveredPointId = -1;
   /** Per-point hover weight in [0,1], eased toward 1 for the hovered point. */
   private hoverWeights = new Float32Array(0);
+  /** Series index isolated via the legend / `focusSeries()`, or null. */
+  private focusedSeries: number | null = null;
+  /** Per-point dim weight in [0,1], eased toward 1 for non-focused series. */
+  private dimWeights = new Float32Array(0);
   private dpr = 1;
   private ro: ResizeObserver | null = null;
   private disposed = false;
@@ -256,7 +271,9 @@ export class ScatterChart implements PanZoomable {
     this.overlayCanvas = oc;
     this.overlay = new Overlay(oc);
 
-    if (this.chrome.legend.show) this.legend = new Legend(this.el, this.chrome.legend);
+    if (this.chrome.legend.show) {
+      this.legend = new Legend(this.el, this.chrome.legend, (i) => this.handleLegendClick(i));
+    }
     if (this.chrome.title.show) this.title = new Title(this.el, this.chrome.title);
   }
 
@@ -308,9 +325,38 @@ export class ScatterChart implements PanZoomable {
   private refreshChrome(data: MeshDataSet): void {
     if (!this.chrome.any || !this.layout) return;
     this.axes = buildAxes(this.layout, this.chrome.x, this.chrome.y);
-    if (this.legend) this.legend.setEntries(this.legendEntries(data));
+    if (this.legend) {
+      this.legend.setEntries(this.legendEntries(data));
+      this.legend.setFocus(this.focusedSeries);
+    }
     this.recomputePlotRect();
     this.drawOverlay();
+  }
+
+  /** Legend entry `i` was clicked: toggle isolation of series `i`. */
+  private handleLegendClick(i: number): void {
+    this.setFocus(this.focusedSeries === i ? null : i);
+  }
+
+  private setFocus(index: number | null): void {
+    if (index === this.focusedSeries) return;
+    this.focusedSeries = index;
+    this.legend?.setFocus(index);
+    this.emitter.emit('seriesFocus', { index });
+  }
+
+  /**
+   * Isolate one series by index — it stays at full opacity, every other
+   * series dims to `interaction.dim.opacity`. `null` clears the isolation.
+   * Equivalent to clicking that series' legend entry; fires `seriesFocus`.
+   */
+  focusSeries(index: number | null): void {
+    this.setFocus(index);
+  }
+
+  /** Currently isolated series index, or `null`. */
+  getFocusedSeries(): number | null {
+    return this.focusedSeries;
   }
 
   private legendEntries(data: MeshDataSet): LegendEntry[] {
@@ -382,6 +428,8 @@ export class ScatterChart implements PanZoomable {
       solid,
       hoverWeights: this.hoverWeights,
       highlightGain: this.cfg.hoverEffects.has('highlight') ? this.cfg.highlightGain : 1,
+      dimWeights: this.dimWeights,
+      dimOpacity: this.cfg.dimOpacity,
       viewScale: this.view.scale,
       viewOffset: this.view.offset,
       clipToPlot: this.pzCfg.enabled,
@@ -409,6 +457,15 @@ export class ScatterChart implements PanZoomable {
     if (this.hoveredPointId !== -1) return true;
     for (let i = 0; i < this.hoverWeights.length; i++)
       if (this.hoverWeights[i]! > 0.001) return true;
+    return false;
+  }
+
+  /** Whether the dim transition is still easing (needs the solid layer to keep repainting). */
+  private solidDimActive(): boolean {
+    if (!this.markerStyle.enabled) return false;
+    if (this.focusedSeries !== null) return true;
+    for (let i = 0; i < this.dimWeights.length; i++)
+      if (this.dimWeights[i]! > 0.001) return true;
     return false;
   }
 
@@ -474,9 +531,20 @@ export class ScatterChart implements PanZoomable {
     this.data = data;
     this.geomVersion++;
 
+    // Clamp focus regardless of whether a legend is mounted — focusSeries()
+    // works without one, and a stale out-of-range index would otherwise dim
+    // every series (no meta's seriesIndex would match it).
+    if (this.focusedSeries !== null && this.focusedSeries >= data.series.length) {
+      this.focusedSeries = null;
+    }
+
     const weights = new Float32Array(metas.length);
     weights.set(this.hoverWeights.subarray(0, Math.min(metas.length, this.hoverWeights.length)));
     this.hoverWeights = weights;
+
+    const dimWeights = new Float32Array(metas.length);
+    dimWeights.set(this.dimWeights.subarray(0, Math.min(metas.length, this.dimWeights.length)));
+    this.dimWeights = dimWeights;
 
     const counts = blobGrainCounts(blobs, {
       density: this.cfg.grainDensity,
@@ -746,6 +814,7 @@ export class ScatterChart implements PanZoomable {
     this.lastFrameMs = nowMs;
     this.fps?.sample(dt, nowMs);
     this.easeHoverWeights(dt);
+    this.easeDimWeights(dt);
     const now = (nowMs - this.startTime) / 1000;
     this.renderer.frame(this.uniforms(now));
     if (this.solidEnabled()) {
@@ -754,7 +823,12 @@ export class ScatterChart implements PanZoomable {
         this.drawOverlay(now);
       } else {
         const solid = this.revealState(now).solid;
-        if (solid !== this.lastSolid || this.solidHoverActive() || this.overlayDirty) {
+        if (
+          solid !== this.lastSolid ||
+          this.solidHoverActive() ||
+          this.solidDimActive() ||
+          this.overlayDirty
+        ) {
           this.drawOverlay(now);
         }
       }
@@ -769,6 +843,20 @@ export class ScatterChart implements PanZoomable {
     const k = this.cfg.hoverFade > 0 && dt > 0 ? 1 - Math.exp(-dt / this.cfg.hoverFade) : 1;
     for (let i = 0; i < w.length; i++) {
       const target = i === this.hoveredPointId ? 1 : 0;
+      const next = w[i]! + (target - w[i]!) * k;
+      w[i] = Math.abs(next - target) < 0.001 ? target : next;
+    }
+  }
+
+  // Ease each point's dim weight toward its target: 1 for every point whose
+  // series isn't the focused one, 0 when nothing is focused — independent of
+  // hover so isolating a series composes with (rather than fights) pointer hover.
+  private easeDimWeights(dt: number): void {
+    const w = this.dimWeights;
+    const k = this.cfg.dimFade > 0 && dt > 0 ? 1 - Math.exp(-dt / this.cfg.dimFade) : 1;
+    for (let i = 0; i < w.length; i++) {
+      const seriesIndex = this.metas[i]?.seriesIndex;
+      const target = this.focusedSeries !== null && seriesIndex !== this.focusedSeries ? 1 : 0;
       const next = w[i]! + (target - w[i]!) * k;
       w[i] = Math.abs(next - target) < 0.001 ? target : next;
     }
@@ -790,6 +878,8 @@ export class ScatterChart implements PanZoomable {
       highlightGain: useHighlight ? this.cfg.highlightGain : 1,
       hoverJitterAmp: useJitter ? this.cfg.hoverJitterAmp : 0,
       hoverOpacity: useOpacity ? this.cfg.hoverOpacity : -1,
+      dimWeights: this.dimWeights,
+      dimOpacity: this.cfg.dimOpacity,
       settleJitterAmp: this.morph ? 0 : this.cfg.settleJitter,
       background: this.cfg.background,
       plotRect: this.plotRect,

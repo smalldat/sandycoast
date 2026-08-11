@@ -12,17 +12,20 @@ export const CHARTS: Record<ChartKind, ChartFactory> = {
   bar: (host, config, emit) => {
     const chart = new BarChart(host, config as never);
     chart.on('hover', (p) => emit({ type: 'hover', payload: p.bar }));
+    chart.on('seriesFocus', (p) => emit({ type: 'seriesFocus', payload: p }));
     return chart;
   },
   line: (host, config, emit) => {
     const chart = new LineChart(host, config as never);
     chart.on('hover', (p) => emit({ type: 'hover', payload: p.point }));
+    chart.on('seriesFocus', (p) => emit({ type: 'seriesFocus', payload: p }));
     return chart;
   },
   pie: (host, config, emit) => {
     const chart = new PieChart(host, config as never);
     chart.on('hover', (p) => emit({ type: 'hover', payload: p.slice }));
     chart.on('seriesChange', (p) => emit({ type: 'seriesChange', payload: p }));
+    chart.on('seriesFocus', (p) => emit({ type: 'seriesFocus', payload: p }));
     return chart;
   },
 };

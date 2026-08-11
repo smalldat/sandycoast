@@ -46,6 +46,10 @@ export interface PieOverlayState {
   hoverWeights: Float32Array;
   /** Color multiplier for a fully-hovered slice (1 = highlight effect off). */
   highlightGain: number;
+  /** Per-slice dim weight in [0,1] (index = sliceId); dims non-focused slices. */
+  dimWeights: Float32Array;
+  /** Alpha multiplier for a fully-dimmed slice (1 = no dim). */
+  dimOpacity: number;
   hoveredSlice: SliceMeta | null;
   /** Pointer in device px (y-down), or null when outside. */
   pointer: { x: number; y: number } | null;
@@ -258,10 +262,11 @@ export class PieOverlay {
     ctx.drawImage(layer.canvas, layer.left, layer.top);
     ctx.globalAlpha = 1;
 
-    if (s.highlightGain === 1) return;
+    if (s.highlightGain === 1 && s.dimOpacity === 1) return;
     for (const m of s.metas) {
       const w = s.hoverWeights[m.sliceId] ?? 0;
-      if (w <= HOVER_EPSILON) continue;
+      const dw = s.dimWeights[m.sliceId] ?? 0;
+      if (w <= HOVER_EPSILON && dw <= HOVER_EPSILON) continue;
       ctx.save();
       // Clip to the wedge plus its border bleed, clear the baked-in copy, then
       // repaint it brighter. Stroking the clip path itself would clip the
@@ -278,7 +283,9 @@ export class PieOverlay {
       ctx.clip();
       const r = (m.rOuter + grown) * disc.scale;
       ctx.clearRect(disc.cx - r, disc.cy - r, r * 2, r * 2);
-      this.paintSlice(ctx, s, m, disc, 1 + (s.highlightGain - 1) * w, s.solid, 0, 0);
+      const gain = 1 + (s.highlightGain - 1) * w;
+      const dimMul = 1 + (s.dimOpacity - 1) * dw;
+      this.paintSlice(ctx, s, m, disc, gain, s.solid * dimMul, 0, 0);
       ctx.restore();
     }
   }

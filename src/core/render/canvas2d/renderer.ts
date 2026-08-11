@@ -73,14 +73,18 @@ export class Canvas2DRenderer implements Renderer {
       ctx.rect(px0 * this.w, (1 - py1) * this.h, pw * this.w, ph * this.h);
       ctx.clip();
     }
-    // Group draws by color to cut fillStyle churn; hovered grains (weight>0)
-    // fall out of the group with a per-grain (eased) highlight.
+    const dimW = u.dimWeights;
+    const dimOn = u.dimOpacity >= 0;
+    // Group draws by color to cut fillStyle churn; hovered/dimmed grains
+    // (weight>0) fall out of the group with a per-grain (eased) style.
     for (let ci = 0; ci < u.palette.length; ci++) {
       const color = u.palette[ci]!;
       let plainSet = false;
       for (let i = 0; i < g.count; i++) {
         if (g.colorIdx[i] !== ci) continue;
-        const w = weights[g.barId[i]!] ?? 0;
+        const barId = g.barId[i]!;
+        const w = weights[barId] ?? 0;
+        const dw = dimW[barId] ?? 0;
         evalGrain(g, i, u.now, u.duration, u.easing, u.settleJitterAmp, tmp);
         // Hover jitter, matching the GPU: settle-independent, and left in layout
         // space so it scales with zoom along with the rest of the geometry.
@@ -98,15 +102,16 @@ export class Canvas2DRenderer implements Renderer {
         const px = (px0 + vx * pw) * this.w;
         const py = (1 - (py0 + vy * ph)) * this.h;
 
-        if (w > 0.001) {
-          const alpha = opOn ? fade + (u.hoverOpacity - fade) * w : fade;
+        const dimMul = dimOn ? 1 + (Math.max(u.dimOpacity, 0) - 1) * dw : 1;
+        if (w > 0.001 || dw > 0.001) {
+          const alpha = (opOn ? fade + (u.hoverOpacity - fade) * w : fade) * dimMul;
           ctx.fillStyle = rgbaCss(color, 1 + (u.highlightGain - 1) * w, alpha);
           plainSet = false;
         } else if (!plainSet) {
           ctx.fillStyle = rgbaCss(color, 1, fade);
           plainSet = true;
         }
-        if (fade <= 0 && !(w > 0.001)) continue; // faded, un-hovered → skip draw
+        if (fade <= 0 && !(w > 0.001) && !(dw > 0.001)) continue; // faded, un-hovered, un-dimmed → skip draw
 
         if (u.grainShape === 'disc') {
           ctx.beginPath();
