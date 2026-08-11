@@ -21,6 +21,7 @@ function select(comp: DemoComponent, btn: HTMLButtonElement): void {
   for (const el of navEl.querySelectorAll('button')) el.classList.remove('active');
   btn.classList.add('active');
   active = comp;
+  chromeApi.applyLayoutForDemo(comp.preferredLayout ?? 'tb');
   mount(comp);
   saveActive(comp.id);
 }
@@ -28,13 +29,17 @@ function select(comp: DemoComponent, btn: HTMLButtonElement): void {
 // Chart colours live in each demo's config, so a theme switch has to migrate
 // every saved config (not only the visible one) and rebuild the live chart —
 // `mount` re-reads settings from storage, so remounting is enough.
-initChrome(document.querySelector<HTMLElement>('.head-links')!, hostEl, (from, to) => {
-  const map = colorRemap(from, to);
-  for (const comp of COMPONENTS) remapSavedColors(comp.id, map);
-  if (!active) return;
-  active.unmount();
-  mount(active);
-});
+const chromeApi = initChrome(
+  document.querySelector<HTMLElement>('.head-links')!,
+  hostEl,
+  (from, to) => {
+    const map = colorRemap(from, to);
+    for (const comp of COMPONENTS) remapSavedColors(comp.id, map);
+    if (!active) return;
+    active.unmount();
+    mount(active);
+  },
+);
 
 for (const comp of COMPONENTS) {
   const btn = document.createElement('button');

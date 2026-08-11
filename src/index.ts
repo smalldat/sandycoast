@@ -9,11 +9,13 @@ export type {
   BarMeta,
   BarStyleConfig,
   CurrentValueConfig,
+  DimConfig,
   FpsConfig,
   FpsPosition,
   HoverEffect,
   HoverPayload,
   LegendConfig,
+  SeriesFocusPayload,
   Side,
 } from './charts/bar/types.js';
 export { resolveBarStyle } from './charts/bar/barStyle.js';

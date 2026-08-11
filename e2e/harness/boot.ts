@@ -10,6 +10,9 @@ export interface HarnessProbe {
   events: ProbeEvent[];
   backend: string | null;
   dispose(): void;
+  /** Programmatic twin of a legend click — same code path, per Plan 11. */
+  focusSeries(index: number | null): void;
+  getFocusedSeries(): number | null;
 }
 
 declare global {
@@ -48,5 +51,7 @@ export async function boot(CHARTS: Record<ChartKind, ChartFactory>): Promise<voi
     events,
     backend: chart.backend,
     dispose: () => chart.dispose(),
+    focusSeries: (index) => chart.focusSeries?.(index),
+    getFocusedSeries: () => chart.getFocusedSeries?.() ?? null,
   };
 }

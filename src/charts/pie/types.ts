@@ -3,9 +3,11 @@ import type { RevealConfig } from '../../core/chrome/reveal.js';
 import type {
   AxisConfig,
   CurrentValueConfig as CurrentValueConfigOf,
+  DimConfig,
   FpsConfig,
   HoverEffect,
   LegendConfig,
+  SeriesFocusPayload,
   Side,
   TitleConfig,
 } from '../../core/chrome/types.js';
@@ -14,7 +16,16 @@ import type { Easing } from '../../core/particles/anim.js';
 import type { BackendPreference } from '../../core/render/pick.js';
 import type { GrainShape, RGBA } from '../../core/render/types.js';
 
-export type { AxisConfig, FpsConfig, HoverEffect, LegendConfig, Side, TitleConfig };
+export type {
+  AxisConfig,
+  DimConfig,
+  FpsConfig,
+  HoverEffect,
+  LegendConfig,
+  SeriesFocusPayload,
+  Side,
+  TitleConfig,
+};
 
 /** Hover readout config, with `format` typed against {@link SliceMeta}. */
 export type CurrentValueConfig = CurrentValueConfigOf<SliceMeta>;
@@ -157,6 +168,8 @@ export interface PieChartConfig {
       /** Enter/leave transition time in ms. Default 180. */
       fadeMs?: number;
     };
+    /** Legend click-to-isolate tuning; see {@link LegendConfig.interactive}. */
+    dim?: DimConfig;
   };
   /**
    * `axes.x` styles the **slider's** ticks (count, format, label, font, color) —

@@ -47,8 +47,8 @@ function defaultConfig(): Cfg {
     backend: 'auto',
     grain: { sizePx: 2.4, shape: 'disc', jitter: 0.4, settleJitter: 0.02 },
     animation: {
-      duration: 1100,
-      stagger: 700,
+      duration: 500,
+      stagger: 500,
       ease: 'easeOutCubic',
       morphDuration: 1400,
       reflow: 'translate',
@@ -63,12 +63,13 @@ function defaultConfig(): Cfg {
         opacity: 1,
         fadeMs: 180,
       },
+      dim: { opacity: 0.15, fadeMs: 200 },
     },
     axes: {
       x: { show: true, ticks: 5, label: '', gridLines: false, color: palette.axis, fontPx: 11 },
       y: { show: true, ticks: 5, label: 'value', gridLines: true, color: palette.axis, fontPx: 11 },
     },
-    legend: { show: true, position: 'bottom', align: 'center', swatch: 'disc' },
+    legend: { show: true, position: 'bottom', align: 'center', swatch: 'disc', interactive: true },
     currentValue: { show: true, mode: 'pointer', guide: 'y', markers: true, color: palette.text },
     bars: {
       fill: { opacity: 0.85 },
@@ -84,9 +85,9 @@ function defaultConfig(): Cfg {
     },
     // On-screen FPS meter; 'off' hides it. Position pins it to an edge/corner.
     fps: { position: 'off', color: palette.text },
-    // Pan & zoom: drag to pan, wheel/UI to zoom. Off by default.
+    // Pan & zoom: drag to pan, wheel/UI to zoom.
     panZoom: {
-      enabled: false,
+      enabled: true,
       axes: 'both',
       minZoom: 1,
       maxZoom: 10,
@@ -320,6 +321,27 @@ const GROUPS: ControlGroup[] = [
     ],
   },
   {
+    title: 'Legend dim (click to isolate)',
+    controls: [
+      {
+        kind: 'slider',
+        label: 'Dimmed opacity',
+        path: 'interaction.dim.opacity',
+        min: 0,
+        max: 1,
+        step: 0.05,
+      },
+      {
+        kind: 'slider',
+        label: 'Fade (ms)',
+        path: 'interaction.dim.fadeMs',
+        min: 0,
+        max: 600,
+        step: 20,
+      },
+    ],
+  },
+  {
     title: 'X axis',
     controls: [
       { kind: 'checkbox', label: 'Show', path: 'axes.x.show' },
@@ -385,6 +407,11 @@ const GROUPS: ControlGroup[] = [
           { value: 'disc', label: 'disc' },
           { value: 'square', label: 'square' },
         ],
+      },
+      {
+        kind: 'checkbox',
+        label: 'Legend interactive (click to isolate)',
+        path: 'legend.interactive',
       },
     ],
   },
@@ -502,6 +529,7 @@ class BarChartDemo implements DemoComponent {
   private chartEl!: HTMLElement;
   private statusEl!: HTMLElement;
   private hoverEl!: HTMLElement;
+  private focusEl!: HTMLElement;
   private panelEl!: HTMLElement;
   /** Timers for the continuous update / addition toggles. */
   private updTimer: ReturnType<typeof setInterval> | null = null;
@@ -562,14 +590,18 @@ class BarChartDemo implements DemoComponent {
     const contAdd = toggle('Continuous addition', (on) =>
       this.setContinuous('addTimer', on, 1400, () => this.addSlot()),
     );
-    liveBar.append(upd, addBtn, rem, contUpd, contAdd);
+    const clearFocus = button('Clear legend focus', () => this.chart?.focusSeries(null));
+    liveBar.append(upd, addBtn, rem, contUpd, contAdd, clearFocus);
 
     this.statusEl = document.createElement('div');
     this.statusEl.className = 'status';
     this.hoverEl = document.createElement('div');
     this.hoverEl.className = 'hover';
     this.hoverEl.textContent = 'hover a bar…';
-    host.append(this.chartEl, toolbar, liveBar, this.statusEl, this.hoverEl);
+    this.focusEl = document.createElement('div');
+    this.focusEl.className = 'status';
+    this.focusEl.textContent = 'no series isolated — click a legend entry (Legend interactive)';
+    host.append(this.chartEl, toolbar, liveBar, this.statusEl, this.hoverEl, this.focusEl);
 
     this.renderPanel();
     this.build();
@@ -673,6 +705,12 @@ class BarChartDemo implements DemoComponent {
       this.hoverEl.textContent = bar
         ? `${bar.xValue} · ${String(bar.seriesKey)} = ${bar.yValue}`
         : 'hover a bar…';
+    });
+    this.chart.on('seriesFocus', ({ index }) => {
+      this.focusEl.textContent =
+        index === null
+          ? 'no series isolated — click a legend entry (Legend interactive)'
+          : `isolated: series ${index}`;
     });
   }
 

@@ -9,6 +9,27 @@ export type Side = 'left' | 'right' | 'top' | 'bottom';
 
 export type HoverEffect = 'highlight' | 'jitter' | 'opacity';
 
+/**
+ * Tuning for the legend click-to-isolate effect (see
+ * {@link LegendConfig.interactive} and each chart's `focusSeries` method).
+ * Has no effect until a series/slice is actually focused.
+ */
+export interface DimConfig {
+  /** Opacity of dimmed series/slices, 0..1. Default 0.15. */
+  opacity?: number;
+  /** Ease in/out time for the dim transition, ms. Default 200. */
+  fadeMs?: number;
+}
+
+/**
+ * Emitted as the `seriesFocus` event whenever the isolated series/slice
+ * changes — via a legend click or a `focusSeries()` call, both the same code
+ * path. `index: null` means every series/slice is shown at full opacity.
+ */
+export interface SeriesFocusPayload {
+  index: number | null;
+}
+
 export interface AxisConfig {
   /** Draw this axis. Default false. */
   show?: boolean;
@@ -44,6 +65,12 @@ export interface LegendConfig {
   align?: 'start' | 'center' | 'end';
   /** Swatch shape. Default follows the grain shape. */
   swatch?: 'disc' | 'square';
+  /**
+   * Click an entry to isolate it — every other series/slice dims to
+   * `interaction.dim.opacity`. Click the isolated entry again to clear it.
+   * Default false (the legend stays presentational, exactly as today).
+   */
+  interactive?: boolean;
 }
 
 /**

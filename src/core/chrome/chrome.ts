@@ -34,6 +34,8 @@ export interface ResolvedLegend {
   position: Side;
   align: 'start' | 'center' | 'end';
   swatch: 'disc' | 'square';
+  /** Click an entry to isolate it (see {@link LegendConfig.interactive}). */
+  interactive: boolean;
 }
 
 export interface ResolvedTitle {
@@ -104,6 +106,7 @@ export function resolveChrome(cfg: ChromeInput): ResolvedChrome {
     position: cfg.legend?.position ?? 'bottom',
     align: cfg.legend?.align ?? 'center',
     swatch: cfg.legend?.swatch ?? (cfg.grain?.shape === 'quad' ? 'square' : 'disc'),
+    interactive: cfg.legend?.interactive ?? false,
   };
   const t = cfg.title;
   const text = t?.text ?? '';

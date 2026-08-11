@@ -16,7 +16,9 @@ export type Act =
   /** Move the pointer off the chart entirely. */
   | { kind: 'leave' }
   /** Advance the fake clock, running the animation frames it covers. */
-  | { kind: 'advance'; ms: number };
+  | { kind: 'advance'; ms: number }
+  /** Click the nth legend entry (DOM order) — requires `legend.interactive`. */
+  | { kind: 'clickLegend'; index: number };
 
 /** Assertions checked after an action. All fields are optional. */
 export interface Expectation {

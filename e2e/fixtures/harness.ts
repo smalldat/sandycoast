@@ -28,6 +28,9 @@ export interface Mounted {
   ink(): Promise<number>;
   /** Uncaught page errors collected since navigation. */
   errors: string[];
+  /** Programmatic twin of a legend click (same code path as `clickLegend`). */
+  focusSeries(index: number | null): Promise<void>;
+  getFocusedSeries(): Promise<number | null>;
 }
 
 /**
@@ -62,6 +65,8 @@ export async function mountScenario(
     backend: () => page.evaluate(() => window.__sc?.backend ?? null),
     ink: () => page.evaluate(inkFraction),
     errors,
+    focusSeries: (index) => page.evaluate((i) => window.__sc?.focusSeries(i), index),
+    getFocusedSeries: () => page.evaluate(() => window.__sc?.getFocusedSeries() ?? null),
   };
 
   await mounted.advance(scenario.settleMs);
@@ -112,6 +117,11 @@ async function perform(m: Mounted, act: Act): Promise<void> {
       return;
     case 'advance':
       await m.advance(act.ms);
+      return;
+    case 'clickLegend':
+      // The legend is a real DOM layer (see core/chrome/legend.ts), so a plain
+      // click drives the exact same listener a user click would.
+      await m.host.locator('[role="button"]').nth(act.index).click();
       return;
   }
 }

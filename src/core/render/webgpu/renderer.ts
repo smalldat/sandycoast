@@ -25,6 +25,8 @@ export class WebGPURenderer implements Renderer {
   private paletteBuf: GPUBuffer | null = null;
   private hoverBuf: GPUBuffer | null = null;
   private hoverCap = 0;
+  private dimBuf: GPUBuffer | null = null;
+  private dimCap = 0;
   private bindGroup: GPUBindGroup | null = null;
   private bindLayout!: GPUBindGroupLayout;
   private grainCount = 0;
@@ -65,6 +67,11 @@ export class WebGPURenderer implements Renderer {
         },
         {
           binding: 2,
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: 'read-only-storage' },
+        },
+        {
+          binding: 3,
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: 'read-only-storage' },
         },
@@ -177,6 +184,23 @@ export class WebGPURenderer implements Renderer {
       u.hoverWeights as unknown as GPUAllowSharedBufferSource,
     );
 
+    // Per-bar dim weights (legend isolation), same grow-only-on-demand pattern.
+    const dimCount = Math.max(1, u.dimWeights.length);
+    if (!this.dimBuf || this.dimCap < dimCount) {
+      this.dimBuf?.destroy();
+      this.dimCap = Math.max(4, dimCount);
+      this.dimBuf = this.device.createBuffer({
+        size: this.dimCap * 4,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      this.bindGroup = null;
+    }
+    this.device.queue.writeBuffer(
+      this.dimBuf,
+      0,
+      u.dimWeights as unknown as GPUAllowSharedBufferSource,
+    );
+
     if (!this.bindGroup) {
       this.bindGroup = this.device.createBindGroup({
         layout: this.bindLayout,
@@ -184,6 +208,7 @@ export class WebGPURenderer implements Renderer {
           { binding: 0, resource: { buffer: this.uniformBuf } },
           { binding: 1, resource: { buffer: this.paletteBuf } },
           { binding: 2, resource: { buffer: this.hoverBuf } },
+          { binding: 3, resource: { buffer: this.dimBuf } },
         ],
       });
     }
@@ -215,7 +240,7 @@ export class WebGPURenderer implements Renderer {
     d[18] = u.plotRect[2];
     d[19] = u.plotRect[3];
     d[20] = u.hoverOpacity;
-    d[21] = 0;
+    d[21] = u.dimOpacity;
     d[22] = 0;
     d[23] = 0;
     d[24] = u.viewScale?.[0] ?? 1;
@@ -269,10 +294,12 @@ export class WebGPURenderer implements Renderer {
     this.instBuf?.destroy();
     this.paletteBuf?.destroy();
     this.hoverBuf?.destroy();
+    this.dimBuf?.destroy();
     this.uniformBuf?.destroy();
     this.quadBuf?.destroy();
     this.instBuf = null;
     this.paletteBuf = null;
     this.hoverBuf = null;
+    this.dimBuf = null;
   }
 }

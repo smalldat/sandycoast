@@ -45,6 +45,10 @@ export interface OverlayState {
   hoverWeights: Float32Array;
   /** Color multiplier for a fully-hovered series (1 = highlight effect off). */
   highlightGain: number;
+  /** Per-point dim weight in [0,1] (index = pointId); dims non-focused series. */
+  dimWeights: Float32Array;
+  /** Alpha multiplier for a fully-dimmed series (1 = no dim). */
+  dimOpacity: number;
   /** Pan/zoom transform applied to layout coords (default identity). */
   viewScale?: [number, number];
   viewOffset?: [number, number];
@@ -312,9 +316,11 @@ export class Overlay {
       // All of a series' points share the same eased weight; take the first.
       const w = s.hoverWeights[path.points[0]!] ?? 0;
       const gain = w > 0 ? 1 + (s.highlightGain - 1) * w : 1;
+      const dw = s.dimWeights[path.points[0]!] ?? 0;
+      const dimMul = dw > 0 ? 1 + (s.dimOpacity - 1) * dw : 1;
 
       // Per-layer opacity is already baked in; `solid` scales the whole reveal.
-      ctx.globalAlpha = s.solid;
+      ctx.globalAlpha = s.solid * dimMul;
       // brightness() multiplies rgb and leaves alpha alone — the same thing the
       // old per-draw rgb gain did, so highlighting matches.
       if (gain !== 1 && filterSupported) ctx.filter = `brightness(${gain})`;

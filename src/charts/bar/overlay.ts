@@ -39,6 +39,10 @@ export interface OverlayState {
   hoverWeights: Float32Array;
   /** Color multiplier for a fully-hovered bar (1 = highlight effect off). */
   highlightGain: number;
+  /** Per-bar dim weight in [0,1] (index = barId); dims non-focused series. */
+  dimWeights: Float32Array;
+  /** Alpha multiplier for a fully-dimmed series (1 = no dim). */
+  dimOpacity: number;
   /** Pan/zoom transform applied to layout coords (default identity). */
   viewScale?: [number, number];
   viewOffset?: [number, number];
@@ -307,25 +311,28 @@ export class Overlay {
     ctx.drawImage(layer.canvas, layer.left, layer.top);
     ctx.globalAlpha = 1;
 
-    // Repaint only the bars the hover highlight is actually tinting — one on
-    // the way in, at most one more easing back out.
-    if (s.highlightGain === 1) return;
+    // Repaint only the bars the hover highlight or the legend dim is actually
+    // tinting — one/two on the way in, at most one more easing back out.
+    if (s.highlightGain === 1 && s.dimOpacity === 1) return;
     const bw = Math.ceil(s.barStyle.border.width * dpr) + 2;
     for (const m of s.metas) {
       const w = s.hoverWeights[m.barId] ?? 0;
-      if (w <= HOVER_EPSILON) continue;
+      const dw = s.dimWeights[m.barId] ?? 0;
+      if (w <= HOVER_EPSILON && dw <= HOVER_EPSILON) continue;
       const L = dx(m.x0);
       const R = dx(m.x1);
       const B = dy(0);
       const T = dy(m.height);
       ctx.save();
       // Clip to the bar plus its border bleed so clearing the baked-in copy
-      // can't chew into a neighbouring bar, then repaint it brighter.
+      // can't chew into a neighbouring bar, then repaint it brighter/dimmer.
       ctx.beginPath();
       ctx.rect(L - bw, T - bw, R - L + bw * 2, B - T + bw * 2);
       ctx.clip();
       ctx.clearRect(L, T, R - L, B - T);
-      this.paintBar(ctx, s, m, dx, dy, dpr, 1 + (s.highlightGain - 1) * w, s.solid, 0, 0);
+      const gain = 1 + (s.highlightGain - 1) * w;
+      const dimMul = 1 + (s.dimOpacity - 1) * dw;
+      this.paintBar(ctx, s, m, dx, dy, dpr, gain, s.solid * dimMul, 0, 0);
       ctx.restore();
     }
   }
