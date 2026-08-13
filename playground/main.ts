@@ -24,6 +24,22 @@ function select(comp: DemoComponent, btn: HTMLButtonElement): void {
   chromeApi.applyLayoutForDemo(comp.preferredLayout ?? 'tb');
   mount(comp);
   saveActive(comp.id);
+  // Keep the hash in step so the URL is always shareable. replaceState rather
+  // than assigning location.hash: no history entry per click, no hashchange.
+  history.replaceState(null, '', `#${comp.id}`);
+}
+
+/** Enabled component named by `#<id>` in the URL, if any. */
+function compFromHash(): DemoComponent | undefined {
+  const id = location.hash.slice(1);
+  return COMPONENTS.find((c) => c.id === id && !c.disabled);
+}
+
+function selectById(comp: DemoComponent | undefined): boolean {
+  const btn = comp && buttons.get(comp);
+  if (!comp || !btn) return false;
+  select(comp, btn);
+  return true;
 }
 
 // Chart colours live in each demo's config, so a theme switch has to migrate
@@ -54,11 +70,13 @@ for (const comp of COMPONENTS) {
   buttons.set(comp, btn);
 }
 
-// Restore the last-shown component; fall back to the first enabled one.
+// A `#<id>` deep link wins (that's someone arriving from a link that named a
+// demo); otherwise restore the last-shown component, else the first enabled one.
 const savedId = loadActive();
 const saved = COMPONENTS.find((c) => c.id === savedId && !c.disabled);
-const firstComp = saved ?? COMPONENTS.find((c) => !c.disabled);
-if (firstComp) {
-  const btn = buttons.get(firstComp);
-  if (btn) select(firstComp, btn);
-}
+selectById(compFromHash() ?? saved ?? COMPONENTS.find((c) => !c.disabled));
+
+// Someone editing the hash, or following a second link into an open tab.
+window.addEventListener('hashchange', () => {
+  selectById(compFromHash());
+});

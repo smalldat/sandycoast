@@ -86,9 +86,9 @@
         <tr><td><code>background</code></td><td class="type">string</td><td class="def">transparent</td><td>Canvas clear color.</td></tr>
         <tr><td><code>grain</code></td><td class="type">object</td><td class="def">—</td><td>Grain appearance. <a href="#grain">See below</a>.</td></tr>
         <tr><td><code>animation</code></td><td class="type">object</td><td class="def">—</td><td>Timing. <a href="#animation">See below</a>.</td></tr>
-        <tr><td><code>interaction</code></td><td class="type">object</td><td class="def">—</td><td><a href="bar-chart.html#interaction">Same as bar chart</a>, but hover targets a single point rather than a whole series.</td></tr>
+        <tr><td><code>interaction</code></td><td class="type">object</td><td class="def">—</td><td><a href="bar-chart.html#interaction">Same as bar chart</a>, but hover targets a single point rather than a whole series; <code>dim</code> (legend click-to-isolate) targets a whole series, same as everywhere else.</td></tr>
         <tr><td><code>axes</code></td><td class="type">{ x?, y? }</td><td class="def">off</td><td><a href="bar-chart.html#axes">Same shape as bar chart</a> — both continuous here (see the note above).</td></tr>
-        <tr><td><code>legend</code></td><td class="type">LegendConfig</td><td class="def">off</td><td><a href="bar-chart.html#legend">Same as bar chart</a>.</td></tr>
+        <tr><td><code>legend</code></td><td class="type">LegendConfig</td><td class="def">off</td><td><a href="bar-chart.html#legend">Same as bar chart</a>, including click-to-isolate (<code>interactive</code>).</td></tr>
         <tr><td><code>title</code></td><td class="type">TitleConfig</td><td class="def">off</td><td>Chart title; shares the legend's placement vocabulary.</td></tr>
         <tr><td><code>currentValue</code></td><td class="type">object</td><td class="def">off</td><td><a href="bar-chart.html#currentvalue">Same as bar chart</a>.</td></tr>
         <tr><td><code>marker</code></td><td class="type">MarkerStyleConfig</td><td class="def">off</td><td>Solid marker glyph per point. <a href="#marker">See below</a>.</td></tr>
@@ -186,16 +186,20 @@
 }</code></pre>
 
     <h2 id="shared">Shared blocks</h2>
-    <p><code>axes</code>, <code>legend</code>, <code>currentValue</code>, <code>fps</code> and
-      <code>interaction.hover</code> take the same shape the bar chart uses. Full property tables:
+    <p><code>axes</code>, <code>legend</code>, <code>currentValue</code>, <code>fps</code>,
+      <code>interaction.hover</code> and <code>interaction.dim</code> take the same shape the bar chart
+      uses. Full property tables:
       <a href="bar-chart.html#axes">axes</a> ·
       <a href="bar-chart.html#legend">legend</a> ·
       <a href="bar-chart.html#currentvalue">currentValue</a> ·
       <a href="bar-chart.html#fps">fps</a> ·
-      <a href="bar-chart.html#interaction">interaction.hover</a>.</p>
+      <a href="bar-chart.html#interaction">interaction.hover / interaction.dim</a>.</p>
     <div class="note">Unlike the bar/line X axis (evenly-spaced category slots), scatter's <code>axes.x</code>
       <strong>and</strong> <code>axes.y</code> are continuous scales built straight from the data's numeric
       or time extent, padded ~8% on each side so extreme points don't sit flush against the plot edge.</div>
+    <div class="note">Isolating a series with <code>legend.interactive</code> / <code>focusSeries()</code>
+      dims that series' markers <strong>and</strong> its <a href="#approximation">approximation</a>
+      trend/connector line together.</div>
 
     <h2 id="methods">Methods</h2>
     <table class="prop-table">
@@ -204,6 +208,9 @@
         <tr><td><code>whenReady(): Promise&lt;void&gt;</code></td><td>Resolves once the backend is initialized and the first frame is scheduled.</td></tr>
         <tr><td><code>get backend</code></td><td><code>'webgpu' | 'webgl2' | 'canvas2d' | null</code>.</td></tr>
         <tr><td><code>on('hover', fn)</code></td><td>Subscribe to hover; returns an unsubscribe function.</td></tr>
+        <tr><td><code>on('seriesFocus', fn)</code></td><td>Subscribe to legend isolation changes; returns an unsubscribe function. See <a href="#events">Events</a>.</td></tr>
+        <tr><td><code>focusSeries(index)</code></td><td>Isolate one series by index — it stays full opacity, every other series (markers + approximation line) dims to <code>interaction.dim.opacity</code>. Pass <code>null</code> to clear. Equivalent to clicking that series' <a href="bar-chart.html#legend"><code>legend.interactive</code></a> entry; fires <code>seriesFocus</code>.</td></tr>
+        <tr><td><code>getFocusedSeries()</code></td><td><code>number | null</code> — the currently isolated series index, or <code>null</code>.</td></tr>
         <tr><td><code>update(data)</code></td><td>Replace the whole <code>MeshDataSet</code>; grains morph and the marker/approximation layer tweens (no re-pour). There is no point-patch overload — scatter has no <code>z</code> series key to match a patch against.</td></tr>
         <tr><td><code>add(points, seriesIndex = 0)</code></td><td>Append one or more <code>MeshPoint</code>s to a series (created if <code>seriesIndex</code> is past the end); new markers grow in per <code>animation.enter</code>.</td></tr>
         <tr><td><code>remove(indices, seriesIndex = 0)</code></td><td>Remove points from a series by index within it (negative = from end); the cloud reflows.</td></tr>
@@ -236,6 +243,8 @@
   cx: <span class="tok-typ">number</span>; cy: <span class="tok-typ">number</span>;      <span class="tok-com">// layout-space position [0,1]</span>
   color: <span class="tok-typ">RGBA</span>;
 }</code></pre>
+    <p><code>seriesFocus</code> carries <code>{ index: number | null }</code> — same shape as the bar chart's.
+      See <a href="bar-chart.html#events">bar chart → Events</a>.</p>
 
     <h2 id="examples">Examples</h2>
 
@@ -289,6 +298,14 @@
     <h3>Hover</h3>
     <pre><code>chart.<span class="tok-fn">on</span>(<span class="tok-str">'hover'</span>, ({ point }) => {
   <span class="tok-key">if</span> (point) label.textContent = <span class="tok-str">`</span>(${point.xValue}, ${point.yValue}) · ${point.seriesKey}<span class="tok-str">`</span>;
+});</code></pre>
+
+    <h3>Series dimming — click a legend entry to isolate it</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">ScatterChart</span>(el, {
+  data,
+  legend: { show: <span class="tok-key">true</span>, interactive: <span class="tok-key">true</span> },
+  approximation: { kind: <span class="tok-str">'leastSquares'</span> },   <span class="tok-com">// trend lines dim along with their series' markers</span>
+  interaction: { dim: { opacity: <span class="tok-num">0.15</span> } },
 });</code></pre>
 
     <div class="foot">
