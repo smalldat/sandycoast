@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pie chart — @smalldat/sandycoast</title>
+  <meta name="description" content="PieChart API reference: every config property, defaults, methods, events and examples." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <span class="dot"></span>
+      <span>@smalldat/sandycoast<small>sand-based charts</small></span>
+    </a>
+    <nav class="nav-group">
+      <h4>Start here</h4>
+      <a href="index.html">Overview</a>
+      <a href="index.html#install">Install &amp; publish</a>
+      <a href="data-model.html">Data model &amp; shared config</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Visuals</h4>
+      <a href="bar-chart.html">Bar chart</a>
+      <a href="line-chart.html">Line chart</a>
+      <a href="scatter-chart.html">Scatter chart</a>
+      <a href="pie-chart.html" class="active">Pie chart</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Project</h4>
+      <a href="license.html">License</a>
+      <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <span class="eyebrow">Visual</span>
+    <h1>Pie chart</h1>
+    <p class="lede">Sand pours into a ring of annular sectors, then a solid <strong>slice</strong> fill +
+      border resolves on top, the same particle→solid crossfade every visual shares. Set
+      <code>innerRadius</code> above <code>0</code> and a pie becomes a <strong>donut</strong>. Unlike the
+      other charts a pie shows <strong>one series at a time</strong> — a slider (styled from
+      <code>axes.x</code>) picks which, and switching series morphs the wedges to the new values.</p>
+
+    <div class="note"><strong>Structural difference from bar/line/scatter.</strong> Every other visual
+      draws all series at once, positioned along an axis. A pie draws <em>one series' points as slices</em>
+      — <code>data</code> is still a plain <a href="data-model.html#dataset"><code>DataSet</code></a>, but
+      the series axis (<code>z</code>) becomes a <strong>selector</strong> (the slider) rather than a
+      visual dimension, and a slice's category is each point's <code>x</code>.</div>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <a href="#construct">Constructor</a>
+      <a href="#config">Config: top level</a>
+      <a href="#grain">grain</a>
+      <a href="#animation">animation</a>
+      <a href="#geometry">Pie geometry</a>
+      <a href="#slider">Series selection &amp; slider</a>
+      <a href="#slices">slices (fill + border)</a>
+      <a href="#shared">Shared blocks</a>
+      <a href="#methods">Methods</a>
+      <a href="#events">Events</a>
+      <a href="#examples">Examples</a>
+    </div>
+
+    <h2 id="construct">Constructor</h2>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">PieChart</span>(host: HTMLElement, config: PieChartConfig)</code></pre>
+    <p>Mounts a canvas into <code>host</code> and boots the best available backend (WebGPU → Canvas2D).
+      Only <code>data</code> is required.</p>
+
+    <h2 id="config">Config — top level</h2>
+    <p>Mirrors the bar chart's config surface for the shared blocks; the pie-specific additions are the
+      geometry knobs, <code>seriesIndex</code>/<code>maxSlices</code>/<code>maxSeries</code>/<code>slider</code>,
+      and <code>slices</code> (the bar chart's <code>bars</code>, renamed).</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>data</code> <span class="pill">required</span></td><td class="type">DataSet</td><td class="def">—</td>
+          <td>Points to render. See <a href="data-model.html#dataset">Data model</a>. Each series (grouped by <code>z</code>) becomes one slider position; that series' points become slices.</td></tr>
+        <tr><td><code>grainDensity</code></td><td class="type">number</td><td class="def">0.6</td>
+          <td>Grain budget multiplier — the chart draws <code>grainDensity * 20 000</code> grains (capped by <code>maxGrains</code>), independent of slice count. Slices share the budget by area.</td></tr>
+        <tr><td><code>maxGrains</code></td><td class="type">number</td><td class="def">100000</td>
+          <td>Hard grain ceiling.</td></tr>
+        <tr><td><code>colors</code></td><td class="type">string[]</td><td class="def">DEFAULT_PALETTE</td>
+          <td>Slice colors (CSS hex / <code>rgb()</code> / <code>rgba()</code>), cycled per <strong>slice</strong> (not per series — a pie only ever shows one series).</td></tr>
+        <tr><td><code>background</code></td><td class="type">string</td><td class="def">transparent</td>
+          <td>Canvas clear color (CSS).</td></tr>
+        <tr><td><code>grain</code></td><td class="type">object</td><td class="def">—</td>
+          <td>Per-grain appearance. <a href="#grain">See below</a>.</td></tr>
+        <tr><td><code>animation</code></td><td class="type">object</td><td class="def">—</td>
+          <td>Pour-in + morph timing. <a href="#animation">See below</a>.</td></tr>
+        <tr><td><code>innerRadius</code> / <code>radius</code> / <code>startAngle</code> / <code>padAngle</code></td><td class="type">number</td><td class="def">see below</td>
+          <td>Disc shape. <a href="#geometry">See below</a>.</td></tr>
+        <tr><td><code>seriesIndex</code> / <code>maxSlices</code> / <code>maxSeries</code> / <code>slider</code></td><td class="type">—</td><td class="def">see below</td>
+          <td>Which series is shown, and the slider that picks it. <a href="#slider">See below</a>.</td></tr>
+        <tr><td><code>interaction</code></td><td class="type">object</td><td class="def">—</td>
+          <td>Hover effects (per slice) and legend dim tuning — <a href="bar-chart.html#interaction">same shape as the bar chart</a>.</td></tr>
+        <tr><td><code>axes</code></td><td class="type">{ x? }</td><td class="def">off</td>
+          <td><code>axes.x</code> styles the slider's ticks; there is no Y axis on a pie. <a href="#slider">See below</a>.</td></tr>
+        <tr><td><code>legend</code></td><td class="type">LegendConfig</td><td class="def">off</td>
+          <td><a href="bar-chart.html#legend">Same as bar chart</a>, but entries are the <strong>slices</strong> of the displayed series, not series.</td></tr>
+        <tr><td><code>title</code></td><td class="type">TitleConfig</td><td class="def">off</td>
+          <td>Chart title; shares the legend's placement vocabulary.</td></tr>
+        <tr><td><code>currentValue</code></td><td class="type">object</td><td class="def">off</td>
+          <td>Hover-tied readout — <a href="bar-chart.html#currentvalue">same shape as bar chart</a>, <code>format</code> typed against <a href="#events"><code>SliceMeta</code></a>.</td></tr>
+        <tr><td><code>slices</code></td><td class="type">PieStyleConfig</td><td class="def">off</td>
+          <td>Solid fill + border that resolves as sand fades (the bar chart's <code>bars</code>, renamed). <a href="#slices">See below</a>.</td></tr>
+        <tr><td><code>fps</code></td><td class="type">FpsConfig</td><td class="def">off</td>
+          <td><a href="bar-chart.html#fps">Same as bar chart</a>.</td></tr>
+        <tr><td><code>backend</code></td><td class="type">'auto' | 'webgpu' | 'webgl2' | 'canvas2d'</td><td class="def">'auto'</td>
+          <td>Force a rendering backend.</td></tr>
+      </tbody>
+    </table>
+    <div class="note warn">No <code>panZoom</code> — a pie has no scrollable data space to pan or zoom.</div>
+
+    <h2 id="grain"><code>grain</code> — grain appearance</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>sizePx</code></td><td class="type">number</td><td class="def">3</td><td>Grain size in CSS px (scaled by device-pixel-ratio).</td></tr>
+        <tr><td><code>shape</code></td><td class="type">'disc' | 'quad'</td><td class="def">'disc'</td><td>Round grain or square grain.</td></tr>
+        <tr><td><code>jitter</code></td><td class="type">number (0..1)</td><td class="def">0.6</td><td>Polar-grid jitter fraction — scatters grains off the packing grid within each wedge.</td></tr>
+        <tr><td><code>settleJitter</code></td><td class="type">number</td><td class="def">0.004</td><td>Baseline settle wobble amplitude in layout units.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="animation"><code>animation</code> — timing</h2>
+    <div class="note warn"><strong>Units:</strong> <code>duration</code>, <code>stagger</code> and
+      <code>morphDuration</code> are given in <strong>milliseconds</strong>.</div>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>duration</code></td><td class="type">number (ms)</td><td class="def">900</td><td>Per-grain travel time.</td></tr>
+        <tr><td><code>stagger</code></td><td class="type">number (ms)</td><td class="def">500</td><td>Spread of pour start times.</td></tr>
+        <tr><td><code>ease</code></td><td class="type">'linear' | 'easeOutCubic' | 'easeOutQuint'</td><td class="def">'easeOutCubic'</td><td>Grain travel easing.</td></tr>
+        <tr><td><code>morphDuration</code></td><td class="type">number (ms)</td><td class="def">duration + stagger</td><td>Transition window (wedge tween + grain fade) for a series change / <code>update</code> / <code>add</code> / <code>remove</code>.</td></tr>
+        <tr><td><code>reflow</code></td><td class="type">'translate' | 'reshuffle' | 'withSlice'</td><td class="def">'translate'</td>
+          <td>How grains of an <em>unchanged</em> slice move on a data change. <code>withSlice</code> locks them rigidly to the wedge — no delay, no fade flash.</td></tr>
+        <tr><td><code>enter</code></td><td class="type">'pour' | 'rise'</td><td class="def">'pour'</td><td>How an <em>added</em> slice's grains appear. <code>rise</code> grows out from the disc center (the pie's analogue of the bar chart's rise-from-base).</td></tr>
+        <tr><td><code>exit</code></td><td class="type">'fall' | 'vanish'</td><td class="def">'fall'</td><td>How a <em>removed</em> slice's grains leave.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="geometry">Pie geometry — top-level properties</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>innerRadius</code></td><td class="type">number (0..0.95)</td><td class="def">0</td><td>Hole radius as a fraction of the outer radius. <code>0</code> is a pie; anything above cuts the middle out and makes it a donut.</td></tr>
+        <tr><td><code>radius</code></td><td class="type">number (0..1)</td><td class="def">0.92</td><td>Outer radius as a fraction of the disc box's half-extent.</td></tr>
+        <tr><td><code>startAngle</code></td><td class="type">number (degrees)</td><td class="def">0</td><td>Rotation of the first slice's leading edge, clockwise from 12 o'clock.</td></tr>
+        <tr><td><code>padAngle</code></td><td class="type">number (degrees)</td><td class="def">0</td><td>Gap between adjacent slices.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">The disc always sits in a <strong>square</strong> sub-rect of the plot, centered and
+      re-derived on every resize, so it stays a true circle at any host aspect ratio without repacking
+      grains.</div>
+
+    <h2 id="slider">Series selection &amp; slider</h2>
+    <p>A pie shows exactly one series at a time. The slider — which replaces the bar/line/scatter X axis,
+      and takes its tick styling from the same <code>axes.x</code> block — lets the viewer pick which;
+      dragging it (or calling <code>setSeriesIndex</code>) morphs the wedges to the new series' values.
+      It auto-hides when there is only one series.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>seriesIndex</code></td><td class="type">number</td><td class="def">0</td><td>Index of the series shown initially, clamped to the available range.</td></tr>
+        <tr><td><code>maxSlices</code></td><td class="type">number</td><td class="def">10</td><td>Max points of the shown series drawn as slices; extras are dropped.</td></tr>
+        <tr><td><code>maxSeries</code></td><td class="type">number</td><td class="def">1000</td><td>Max series the slider can address; extras are dropped.</td></tr>
+      </tbody>
+    </table>
+    <h3 id="sliderconfig"><code>slider</code> — <span class="type" style="font-size:15px">SliderConfig</span></h3>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>show</code></td><td class="type">boolean</td><td class="def">true</td><td>Draw the slider (hidden anyway when there is one series).</td></tr>
+        <tr><td><code>position</code></td><td class="type">'top' | 'bottom'</td><td class="def">'bottom'</td><td>Edge to pin it to.</td></tr>
+        <tr><td><code>interactive</code></td><td class="type">boolean</td><td class="def">true</td><td>Let the user drag/click the handle.</td></tr>
+        <tr><td><code>color</code></td><td class="type">string</td><td class="def">X axis color</td><td>Track/handle color (CSS).</td></tr>
+        <tr><td><code>handlePx</code></td><td class="type">number</td><td class="def">7</td><td>Handle radius in CSS px.</td></tr>
+        <tr><td><code>trackPx</code></td><td class="type">number</td><td class="def">3</td><td>Track thickness in CSS px.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">A programmatic <a href="#methods"><code>setSeriesIndex</code></a> call and a dragged
+      handle are the same code path — both morph the wedges and ease the handle across the track
+      identically.</div>
+
+    <h2 id="slices"><code>slices</code> — solid fill + border <span class="type" style="font-size:15px">PieStyleConfig</span></h2>
+    <p>Off by default; a config without <code>slices</code> renders as pure sand. Fill and border
+      <strong>always use the slice's color</strong> — only opacity and stroke width are configurable
+      (mirrors the bar chart's <code>bars</code>, minus the per-side flags — a wedge outline has no sides
+      to pick).</p>
+    <h3><code>slices.fill</code></h3>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>opacity</code></td><td class="type">number (0..1)</td><td class="def">1</td><td>Fill opacity.</td></tr>
+      </tbody>
+    </table>
+    <h3><code>slices.border</code></h3>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>show</code></td><td class="type">boolean</td><td class="def">true when a <code>border</code> block is present</td><td>Draw the wedge outline.</td></tr>
+        <tr><td><code>width</code></td><td class="type">number</td><td class="def">1</td><td>Stroke width in CSS px.</td></tr>
+        <tr><td><code>opacity</code></td><td class="type">number (0..1)</td><td class="def">1</td><td>Stroke opacity.</td></tr>
+      </tbody>
+    </table>
+    <h3><code>slices.reveal</code> — particle→solid crossfade</h3>
+    <p>Same shape as <a href="bar-chart.html#bars">the bar chart's <code>bars.reveal</code></a>:
+      <code>start</code>, <code>duration</code>, <code>ease</code>, <code>grainsTo</code>.</p>
+
+    <h2 id="shared">Shared blocks</h2>
+    <p><code>interaction.hover</code>, <code>interaction.dim</code>, <code>legend</code>,
+      <code>currentValue</code> and <code>fps</code> take the same shape the bar chart uses. Full property
+      tables: <a href="bar-chart.html#interaction">interaction.hover</a> ·
+      <a href="bar-chart.html#interactiondim">interaction.dim</a> ·
+      <a href="bar-chart.html#legend">legend</a> ·
+      <a href="bar-chart.html#currentvalue">currentValue</a> ·
+      <a href="bar-chart.html#fps">fps</a>. <code>axes.x</code> is
+      <a href="bar-chart.html#axes">the same <code>AxisConfig</code> shape</a> but styles the slider, not
+      a drawn axis; <code>axes.y</code> is ignored (a pie has no Y axis).</p>
+    <div class="note"><strong>Legend addresses slices, not series.</strong> Because a pie only ever shows
+      one series, <code>legend</code> and <code>interaction.dim</code> isolate a <strong>slice</strong> of
+      the currently displayed series when clicked — <code>focusSeries(index)</code> is named to match the
+      other charts' public API, but on a pie <code>index</code> is a slice index, not a slider position.</div>
+
+    <h2 id="methods">Methods</h2>
+    <table class="prop-table">
+      <thead><tr><th>Method</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>whenReady(): Promise&lt;void&gt;</code></td><td>Resolves once the backend is initialized and the first frame is scheduled.</td></tr>
+        <tr><td><code>get backend</code></td><td><code>'webgpu' | 'webgl2' | 'canvas2d' | null</code>.</td></tr>
+        <tr><td><code>on('hover', fn)</code></td><td>Subscribe to hover; returns an unsubscribe function.</td></tr>
+        <tr><td><code>on('seriesChange', fn)</code></td><td>Subscribe to slider moves (drag or <code>setSeriesIndex</code>). See <a href="#events">Events</a>.</td></tr>
+        <tr><td><code>on('seriesFocus', fn)</code></td><td>Subscribe to legend (slice) isolation changes. See <a href="#events">Events</a>.</td></tr>
+        <tr><td><code>getSeriesIndex(): number</code></td><td>Index of the series currently drawn.</td></tr>
+        <tr><td><code>getSeriesKeys(): (Scalar | undefined)[]</code></td><td>Series keys in slider order (after the <code>maxSeries</code> cap).</td></tr>
+        <tr><td><code>get seriesCount</code></td><td>Number of series the slider can address.</td></tr>
+        <tr><td><code>setSeriesIndex(index)</code></td><td>Show another series; slices morph to the new values and the handle eases across, exactly as a drag would. Clamped to the valid range; a no-op if unchanged.</td></tr>
+        <tr><td><code>focusSeries(index)</code></td><td>Isolate one <strong>slice</strong> by index — full opacity, every other slice dims to <code>interaction.dim.opacity</code>. Pass <code>null</code> to clear. Fires <code>seriesFocus</code>. (See the note under <a href="#shared">Shared blocks</a> on why this addresses a slice.)</td></tr>
+        <tr><td><code>getFocusedSeries()</code></td><td><code>number | null</code> — the currently isolated slice index, or <code>null</code>.</td></tr>
+        <tr><td><code>setTitle(text)</code></td><td>Replace the title text; empty string hides it. The plot re-insets around it.</td></tr>
+        <tr><td><code>update(data)</code></td><td>Replace the whole dataset; grains morph to the new targets and the wedge/slice layer tweens (no re-pour). No patch overload — a pie's slices are keyed by <code>x</code> within the shown series, so pass a full <code>DataSet</code>.</td></tr>
+        <tr><td><code>add(points)</code></td><td>Append one or more points; new slices open and their grains enter per <code>animation.enter</code>.</td></tr>
+        <tr><td><code>remove(refs)</code></td><td>Remove points by <code>PointRef</code> (index, negative = from end, or <code>{x, z?}</code> match); remaining slices reflow to fill the circle.</td></tr>
+        <tr><td><code>repour()</code></td><td>Re-run the pour-in animation with the current data (no morph).</td></tr>
+        <tr><td><code>getData(): DataSet</code></td><td>Deep-cloned snapshot of the current dataset.</td></tr>
+        <tr><td><code>dispose()</code></td><td>Cancel the loop, remove listeners, free the backend and DOM.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="events">Events</h2>
+    <p><code>hover</code> carries <code>{ slice: SliceMeta | null }</code> (<code>null</code> on pointer-leave).</p>
+    <pre><code><span class="tok-com">// SliceMeta — metadata for one drawn slice</span>
+{
+  sliceId: <span class="tok-typ">number</span>;
+  xValue: <span class="tok-typ">Scalar</span>;          <span class="tok-com">// the slice's category</span>
+  seriesKey: <span class="tok-typ">Scalar | undefined</span>;
+  seriesIndex: <span class="tok-typ">number</span>;
+  value: <span class="tok-typ">number</span>;           <span class="tok-com">// raw y</span>
+  fraction: <span class="tok-typ">number</span>;        <span class="tok-com">// share of the series total, 0..1</span>
+  a0: <span class="tok-typ">number</span>; a1: <span class="tok-typ">number</span>;      <span class="tok-com">// start/end angle, radians clockwise from 12 o'clock</span>
+  rInner: <span class="tok-typ">number</span>; rOuter: <span class="tok-typ">number</span>;  <span class="tok-com">// layout-space radii (rInner 0 for a pie)</span>
+  color: <span class="tok-typ">RGBA</span>;
+}</code></pre>
+    <p><code>seriesChange</code> fires whenever the slider selection changes — from a drag <strong>or</strong>
+      a <code>setSeriesIndex()</code> call:</p>
+    <pre><code><span class="tok-com">// SeriesChangePayload</span>
+{
+  index: <span class="tok-typ">number</span>;
+  key: <span class="tok-typ">Scalar | undefined</span>;
+}</code></pre>
+    <p><code>seriesFocus</code> carries <code>{ index: number | null }</code> — the isolated <em>slice</em>
+      index (see the note under <a href="#shared">Shared blocks</a>).</p>
+
+    <h2 id="examples">Examples</h2>
+
+    <h3>Donut with solid slices</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">PieChart</span>(el, {
+  data,   <span class="tok-com">// one series: points are the slice categories</span>
+  innerRadius: <span class="tok-num">0.6</span>,
+  padAngle: <span class="tok-num">1.5</span>,
+  slices: {
+    fill: { opacity: <span class="tok-num">0.9</span> },
+    border: { show: <span class="tok-key">true</span>, width: <span class="tok-num">1.5</span> },
+    reveal: { start: <span class="tok-str">'afterPour'</span>, duration: <span class="tok-num">600</span>, grainsTo: <span class="tok-num">0.1</span> },
+  },
+});</code></pre>
+
+    <h3>Multiple series — slider morphs between them</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">PieChart</span>(el, {
+  data,   <span class="tok-com">// DataSet: points grouped by z into several series ('2024', '2025', ...)</span>
+  axes: { x: { tickFormat: (v) => <span class="tok-str">`FY </span>${v}<span class="tok-str">`</span> } },
+  slider: { position: <span class="tok-str">'bottom'</span> },
+  animation: { morphDuration: <span class="tok-num">700</span> },
+});</code></pre>
+
+    <h3>Legend and current-value readout</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">PieChart</span>(el, {
+  data,
+  legend: { show: <span class="tok-key">true</span>, position: <span class="tok-str">'right'</span> },
+  currentValue: {
+    show: <span class="tok-key">true</span>,
+    format: (slice) => <span class="tok-str">`</span>${slice.xValue}<span class="tok-str">: </span>${(slice.fraction * <span class="tok-num">100</span>).<span class="tok-fn">toFixed</span>(<span class="tok-num">1</span>)}<span class="tok-str">%`</span>,
+  },
+});</code></pre>
+
+    <h3>Live data — update, add, remove</h3>
+    <pre><code><span class="tok-com">// Replace the dataset; slices morph to the new shares:</span>
+chart.<span class="tok-fn">update</span>({ points: [{ x: <span class="tok-str">'EU'</span>, y: <span class="tok-num">180</span> }, { x: <span class="tok-str">'US'</span>, y: <span class="tok-num">140</span> }, { x: <span class="tok-str">'APAC'</span>, y: <span class="tok-num">90</span> }] });
+
+<span class="tok-com">// Append a slice; it opens and its grains pour in:</span>
+chart.<span class="tok-fn">add</span>({ x: <span class="tok-str">'LATAM'</span>, y: <span class="tok-num">30</span> });
+
+<span class="tok-com">// Remove by {x} match or by index:</span>
+chart.<span class="tok-fn">remove</span>([{ x: <span class="tok-str">'APAC'</span> }]);</code></pre>
+
+    <h3>Reacting to the slider</h3>
+    <pre><code>chart.<span class="tok-fn">on</span>(<span class="tok-str">'seriesChange'</span>, ({ index, key }) => {
+  heading.textContent = <span class="tok-str">`Showing: </span>${key}<span class="tok-str">`</span>;
+});
+
+<span class="tok-com">// Drive it from code — same morph, same event, as dragging the slider:</span>
+nextButton.addEventListener(<span class="tok-str">'click'</span>, () => {
+  chart.<span class="tok-fn">setSeriesIndex</span>(chart.<span class="tok-fn">getSeriesIndex</span>() + <span class="tok-num">1</span>);
+});</code></pre>
+
+    <div class="foot">
+      <p>© <span id="yr">2026</span> · <a href="license.html">License</a> ·
+        <a href="data-model.html">Data model →</a></p>
+    </div>
+  </main>
+</div>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
+</body>
+</html>
