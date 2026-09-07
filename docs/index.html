@@ -143,8 +143,10 @@ git push
     <div class="note warn">
       <strong>Note.</strong> These docs are separate from the live <em>playground demo</em> at
       <code>sandycoast.smalldat.com</code>, which is built with Vite and deployed to Firebase Hosting by
-      the <code>.github/workflows/deploy.yml</code> action. The Pages docs and the Firebase playground
-      are independent — publishing one does not touch the other.
+      the <code>.github/workflows/publish.yml</code> action — a <em>release</em> workflow that runs on a
+      push to a <code>release/**</code> branch and publishes the npm package before deploying the site.
+      The Pages docs and the Firebase playground are independent — publishing one does not touch the
+      other, and a docs-only change needs no release.
     </div>
 
     <h2 id="roadmap">Status &amp; roadmap</h2>
