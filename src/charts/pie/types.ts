@@ -9,6 +9,7 @@ import type {
   LegendConfig,
   SeriesFocusPayload,
   Side,
+  SliderConfig,
   TitleConfig,
 } from '../../core/chrome/types.js';
 import type { DataSet, Scalar } from '../../core/data/types.js';
@@ -24,6 +25,7 @@ export type {
   LegendConfig,
   SeriesFocusPayload,
   Side,
+  SliderConfig,
   TitleConfig,
 };
 
@@ -34,26 +36,6 @@ export type CurrentValueConfig = CurrentValueConfigOf<SliceMeta>;
 export const DEFAULT_MAX_SLICES = 10;
 /** Default cap on how many series the slider can address. */
 export const DEFAULT_MAX_SERIES = 1000;
-
-/**
- * Series slider: the pie shows exactly one series at a time, and the slider
- * picks which. It replaces the bar chart's X axis, and takes its tick styling
- * from the same {@link AxisConfig} block (`axes.x`).
- */
-export interface SliderConfig {
-  /** Draw the slider. Default true (hidden anyway when there is one series). */
-  show?: boolean;
-  /** Edge to pin it to. Default 'bottom'. */
-  position?: 'top' | 'bottom';
-  /** Let the user drag/click the handle. Default true. */
-  interactive?: boolean;
-  /** Track/handle color (CSS). Defaults to the X axis color. */
-  color?: string;
-  /** Handle radius in CSS px. Default 7. */
-  handlePx?: number;
-  /** Track thickness in CSS px. Default 3. */
-  trackPx?: number;
-}
 
 /**
  * Solid fill + border drawn per slice, revealed as the sand particles fade out.

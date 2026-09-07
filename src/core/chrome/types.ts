@@ -1,6 +1,6 @@
 // Chrome configuration shared by every visual: axes, legend, title, the
-// current-value readout and the FPS meter. Charts import these from `core` —
-// never from each other — so a chart component stays independently replaceable.
+// current-value readout and the FPS meter. Charts import these from `core` â€”
+// never from each other â€” so a chart component stays independently replaceable.
 
 import type { Scalar } from '../data/types.js';
 
@@ -23,7 +23,7 @@ export interface DimConfig {
 
 /**
  * Emitted as the `seriesFocus` event whenever the isolated series/slice
- * changes — via a legend click or a `focusSeries()` call, both the same code
+ * changes â€” via a legend click or a `focusSeries()` call, both the same code
  * path. `index: null` means every series/slice is shown at full opacity.
  */
 export interface SeriesFocusPayload {
@@ -66,7 +66,7 @@ export interface LegendConfig {
   /** Swatch shape. Default follows the grain shape. */
   swatch?: 'disc' | 'square';
   /**
-   * Click an entry to isolate it — every other series/slice dims to
+   * Click an entry to isolate it â€” every other series/slice dims to
    * `interaction.dim.opacity`. Click the isolated entry again to clear it.
    * Default false (the legend stays presentational, exactly as today).
    */
@@ -75,7 +75,7 @@ export interface LegendConfig {
 
 /**
  * Chart title drawn as a DOM layer on one edge of the chart, exactly like the
- * legend — same `position` / `align` vocabulary, so a title and a legend on the
+ * legend â€” same `position` / `align` vocabulary, so a title and a legend on the
  * same edge line up with each other.
  */
 export interface TitleConfig {
@@ -105,7 +105,7 @@ export interface CurrentValueConfig<M = unknown> {
   /**
    * Where the readout box sits. `'pointer'` follows the cursor; a Side pins it to
    * that edge; `'axis'` (**On axes**) drops the floating box and instead shows the
-   * value(s) directly on the axes — a highlighted marker beside the Y axis and/or
+   * value(s) directly on the axes â€” a highlighted marker beside the Y axis and/or
    * below the X axis. Default `'pointer'`.
    */
   mode?: 'pointer' | 'axis' | Side;
@@ -115,7 +115,7 @@ export interface CurrentValueConfig<M = unknown> {
    * Cursor guide line(s) drawn to the hovered point. `'y'` = horizontal line to
    * the value (Y) axis, `'x'` = vertical line to the category (X) axis, `'both'`
    * = crosshair, `'none'` = no line. When omitted, falls back to
-   * {@link showGuide} (`true` → `'y'`, `false` → `'none'`). Default `'y'`.
+   * {@link showGuide} (`true` â†’ `'y'`, `false` â†’ `'none'`). Default `'y'`.
    */
   guide?: 'none' | 'x' | 'y' | 'both';
   /** Legacy: draw a horizontal guide line to the value axis. Superseded by {@link guide}. Default true. */
@@ -131,7 +131,7 @@ export interface CurrentValueConfig<M = unknown> {
 
 /**
  * A scrolling data table mounted on one edge of the chart, exactly like the
- * legend — same `position` / `align` vocabulary and the same measure-then-inset
+ * legend â€” same `position` / `align` vocabulary and the same measure-then-inset
  * contract, so a table, a legend and a title on one edge stack instead of
  * overlapping.
  *
@@ -163,6 +163,27 @@ export interface TableConfig {
   fontFamily?: string;
   /** Text color (CSS). */
   color?: string;
+}
+
+/**
+ * Series slider: a chart whose series axis is a *selector* rather than a visual
+ * dimension (pie, candlestick) draws exactly one series at a time, and the
+ * slider picks which. It replaces the bar chart's X axis, and takes its tick
+ * styling from the same {@link AxisConfig} block (`axes.x`).
+ */
+export interface SliderConfig {
+  /** Draw the slider. Default true (hidden anyway when there is one series). */
+  show?: boolean;
+  /** Edge to pin it to. Default 'bottom'. */
+  position?: 'top' | 'bottom';
+  /** Let the user drag/click the handle. Default true. */
+  interactive?: boolean;
+  /** Track/handle color (CSS). Defaults to the X axis color. */
+  color?: string;
+  /** Handle radius in CSS px. Default 7. */
+  handlePx?: number;
+  /** Track thickness in CSS px. Default 3. */
+  trackPx?: number;
 }
 
 /** Where to pin the FPS meter, or `'off'` to hide it. */

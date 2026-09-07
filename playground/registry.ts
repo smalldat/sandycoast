@@ -19,6 +19,7 @@ export interface DemoComponent {
 }
 
 import { barChartDemo } from './barchart.demo.js';
+import { candlestickChartDemo } from './candlestickchart.demo.js';
 import { lineChartDemo } from './linechart.demo.js';
 import { pieChartDemo } from './piechart.demo.js';
 import { scatterChartDemo } from './scatterchart.demo.js';
@@ -30,5 +31,6 @@ export const COMPONENTS: DemoComponent[] = [
   pieChartDemo,
   scatterChartDemo,
   windRoseChartDemo,
+  candlestickChartDemo,
   { id: 'area', label: 'Area chart', disabled: true, mount() {}, unmount() {} },
 ];

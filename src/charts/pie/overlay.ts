@@ -1,9 +1,9 @@
-import type { ResolvedAxis, ResolvedChrome } from '../../core/chrome/chrome.js';
+import type { ResolvedChrome } from '../../core/chrome/chrome.js';
 import { type AxisTick, formatNumber } from '../../core/chrome/format.js';
 import type { RGBA } from '../../core/render/types.js';
 import { cssRGBA } from '../../core/util/color.js';
 import type { ResolvedPieStyle } from './pieStyle.js';
-import { type ResolvedSlider, sliderTrack } from './slider.js';
+import { type ResolvedSlider, drawSlider, sliderTrack } from './slider.js';
 import type { SliceMeta } from './types.js';
 
 /** Slices below this hover weight are close enough to un-hovered to skip. */
@@ -84,10 +84,6 @@ function defaultFormat(slice: SliceMeta): string {
   return `${String(slice.xValue)} = ${formatNumber(slice.value)} (${pct}%)`;
 }
 
-function axisFont(cfg: ResolvedAxis, dpr: number): string {
-  return `${cfg.fontWeight} ${cfg.fontPx * dpr}px ${cfg.fontFamily}`;
-}
-
 /**
  * Canvas2D overlay drawn on top of the grain canvas. Renders the solid slice
  * layer, the series slider (track, ticks, handle) and the current-value readout.
@@ -124,11 +120,11 @@ export class PieOverlay {
   draw(s: PieOverlayState): void {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, s.deviceW, s.deviceH);
-    const drawSlider = s.slider.show && s.sliderActive;
-    if (!s.chrome.any && !s.style.enabled && !drawSlider) return;
+    const showSlider = s.slider.show && s.sliderActive;
+    if (!s.chrome.any && !s.style.enabled && !showSlider) return;
 
     if (s.style.enabled && s.solid > 0) this.drawSlices(s);
-    if (drawSlider) this.drawSlider(s);
+    if (showSlider) this.drawSlider(s);
     if (s.chrome.currentValue.show && s.hoveredSlice) this.drawCurrentValue(s);
   }
 
@@ -292,69 +288,20 @@ export class PieOverlay {
 
   /**
    * Series slider: a track across the plot width with a tick per series (thinned
-   * by the X axis' `ticks`) and a handle at the selected index. Styling comes
-   * from the X axis config, so it reads as the axis it replaces.
+   * by the X axis' `ticks` count) and a draggable handle. The drawing itself is
+   * shared with every other selector-series chart — see `core/chrome/slider.ts`.
    */
   private drawSlider(s: PieOverlayState): void {
-    const ctx = this.ctx;
-    const cfg = s.chrome.x;
-    const sl = s.slider;
-    const dpr = s.dpr;
-    const color = sl.color ?? cfg.color;
-    const track = sliderTrack(sl, s.plotRect, s.deviceW, s.deviceH, dpr);
-    const leftPx = track.x0;
-    const rightPx = track.x1;
-    const trackY = track.y;
-    const handle = track.handle;
-
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = sl.trackPx * dpr;
-    ctx.lineCap = 'round';
-    ctx.globalAlpha = 0.45;
-    ctx.beginPath();
-    ctx.moveTo(leftPx, trackY);
-    ctx.lineTo(rightPx, trackY);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    // Ticks + labels.
-    const tickLen = 4 * dpr;
-    const labelY = sl.position === 'bottom' ? trackY + handle + 3 * dpr : trackY - handle - 3 * dpr;
-    ctx.lineWidth = dpr;
-    ctx.font = axisFont(cfg, dpr);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = sl.position === 'bottom' ? 'top' : 'bottom';
-    for (const t of s.sliderTicks) {
-      const px = leftPx + t.pos * (rightPx - leftPx);
-      ctx.globalAlpha = 0.7;
-      ctx.beginPath();
-      ctx.moveTo(px, trackY - tickLen);
-      ctx.lineTo(px, trackY + tickLen);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      ctx.fillText(t.label, px, labelY);
-    }
-
-    if (cfg.show && cfg.label) {
-      const titleY =
-        sl.position === 'bottom'
-          ? labelY + cfg.fontPx * dpr + 4 * dpr
-          : labelY - cfg.fontPx * dpr - 4 * dpr;
-      ctx.fillText(cfg.label, (leftPx + rightPx) / 2, titleY);
-    }
-
-    // Handle.
-    const hx = leftPx + s.sliderPos * (rightPx - leftPx);
-    ctx.beginPath();
-    ctx.arc(hx, trackY, handle, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(16,20,28,0.92)';
-    ctx.fill();
-    ctx.lineWidth = 2 * dpr;
-    ctx.strokeStyle = color;
-    ctx.stroke();
-    ctx.restore();
+    drawSlider(this.ctx, {
+      slider: s.slider,
+      axis: s.chrome.x,
+      ticks: s.sliderTicks,
+      pos: s.sliderPos,
+      plotRect: s.plotRect,
+      deviceW: s.deviceW,
+      deviceH: s.deviceH,
+      dpr: s.dpr,
+    });
   }
 
   private drawCurrentValue(s: PieOverlayState): void {

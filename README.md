@@ -119,6 +119,13 @@ Plan 03: per-bar solid **fill + border** that fade in while the sand particles
 fade out (`bars` config; see [plans/03-bar-borders-fill.md](https://github.com/smalldat/sandycoast/blob/main/plans/03-bar-borders-fill.md)).
 Plan 05: live **`update` / `add` / `remove`** with smooth border tween + grain
 morph, no full re-pour (see [plans/05-live-data-update-add-remove.md](https://github.com/smalldat/sandycoast/blob/main/plans/05-live-data-update-add-remove.md)).
+`CandlestickChart`: OHLC + live-price data (`OhlcDataSet`), sand bodies that
+resolve into solid candles with always-solid high-low wicks, a **configurable
+rising/falling colour rule** (`candles.direction`: `openClose` / `closeClose` /
+`lowHigh` / `closeInRange`, or your own function), band or real-time x spacing,
+a **live-price line** at the latest `actual`, an instrument slider shared with
+the pie chart, and **overridable mouse events** (`interaction.pointer`).
+See [plans/13-candlestick-chart.md](https://github.com/smalldat/sandycoast/blob/main/plans/13-candlestick-chart.md).
 `LineChart`: solid line / spline / **stacked area** (`line.stack`), grain count
 bounded by ribbon area not point count (`maxGrains` is a hard ceiling), a
 line-only morph (`animation.morphGrains: false`), and a `currentValue` cursor
@@ -134,6 +141,9 @@ Static docs (no build step) are served from [GitHub Pages](https://smalldat.gith
 - [Data model & shared config](https://smalldat.github.io/sandycoast/data-model.html)
 - [Bar chart](https://smalldat.github.io/sandycoast/bar-chart.html) — every config property, methods, events, examples
 - [Line chart](https://smalldat.github.io/sandycoast/line-chart.html)
+- [Scatter chart](https://smalldat.github.io/sandycoast/scatter-chart.html)
+- [Pie chart](https://smalldat.github.io/sandycoast/pie-chart.html)
+- [Candlestick chart](https://smalldat.github.io/sandycoast/candlestick-chart.html) — OHLC, colour rules, live price
 - [License](https://smalldat.github.io/sandycoast/license.html)
 
 **Publish to GitHub Pages:** Settings → Pages → *Deploy from a branch* → branch

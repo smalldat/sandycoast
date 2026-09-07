@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Candlestick chart — @smalldat/sandycoast</title>
+  <meta name="description" content="CandlestickChart API reference: OHLC data, the rising/falling color rule, the live-price line, every config property, methods, events and examples." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <span class="dot"></span>
+      <span>@smalldat/sandycoast<small>sand-based charts</small></span>
+    </a>
+    <nav class="nav-group">
+      <h4>Start here</h4>
+      <a href="index.html">Overview</a>
+      <a href="index.html#install">Install &amp; publish</a>
+      <a href="data-model.html">Data model &amp; shared config</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Visuals</h4>
+      <a href="bar-chart.html">Bar chart</a>
+      <a href="line-chart.html">Line chart</a>
+      <a href="scatter-chart.html">Scatter chart</a>
+      <a href="pie-chart.html">Pie chart</a>
+      <a href="candlestick-chart.html" class="active">Candlestick chart</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Project</h4>
+      <a href="license.html">License</a>
+      <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <span class="eyebrow">Visual</span>
+    <h1>Candlestick chart</h1>
+    <p class="lede">Sand pours into each candle's <strong>body</strong> and resolves into a solid
+      open-close block, while the high-low <strong>wicks</strong> are stroked solid throughout. Every
+      candle is colored <em>rising</em> or <em>falling</em> by a configurable
+      <a href="#direction">difference rule</a>, and a dashed <a href="#actual">live-price line</a>
+      tracks the latest <code>actual</code>.</p>
+
+    <div class="note"><strong>Three structural traits.</strong> (1) <code>data</code> is an
+      <a href="data-model.html#ohlc"><code>OhlcDataSet</code></a> — four prices per period, not one
+      <code>y</code> — so it gets its own additive type next to <code>Point</code>/<code>MeshPoint</code>.
+      (2) <strong>Color comes from a direction rule, not a series palette</strong>: the grain palette is
+      <code>[rising, falling]</code> and the legend's two entries describe those groups, so clicking one
+      isolates every rising (or every falling) candle. (3) <strong>Series are a selector</strong> — two
+      instruments can't share an x-slot legibly, so one series is drawn at a time and the
+      <a href="pie-chart.html#slider">series slider</a> picks which, exactly like the pie chart.</div>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <a href="#construct">Constructor</a>
+      <a href="#data">Data: OhlcDataSet</a>
+      <a href="#config">Config: top level</a>
+      <a href="#candles">candles</a>
+      <a href="#direction">Color rules</a>
+      <a href="#actual">actual (live price)</a>
+      <a href="#spacing">spacing</a>
+      <a href="#animation">animation</a>
+      <a href="#pointer">Overriding mouse events</a>
+      <a href="#shared">Shared blocks</a>
+      <a href="#methods">Methods</a>
+      <a href="#events">Events</a>
+      <a href="#examples">Examples</a>
+    </div>
+
+    <h2 id="construct">Constructor</h2>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">CandlestickChart</span>(host: HTMLElement, config: CandlestickChartConfig)</code></pre>
+    <p>Mounts a canvas into <code>host</code> and boots the best backend (WebGPU → Canvas2D). Only
+      <code>data</code> is required.</p>
+
+    <h2 id="data">Data — <code>OhlcDataSet</code></h2>
+    <pre><code><span class="tok-key">interface</span> <span class="tok-typ">Candle</span> {
+  x: <span class="tok-typ">Scalar</span>;          <span class="tok-com">// period start: a Date, a number, or a category label</span>
+  open: <span class="tok-typ">number</span>;
+  high: <span class="tok-typ">number</span>;
+  low: <span class="tok-typ">number</span>;
+  close: <span class="tok-typ">number</span>;
+  actual?: <span class="tok-typ">number</span>;    <span class="tok-com">// live / last traded price — drives the live-price line</span>
+}
+
+<span class="tok-key">interface</span> <span class="tok-typ">CandleSeries</span> { key?: <span class="tok-typ">Scalar</span>; candles: <span class="tok-typ">Candle</span>[]; }
+<span class="tok-key">interface</span> <span class="tok-typ">OhlcDataSet</span>  { series: <span class="tok-typ">CandleSeries</span>[]; xType?: <span class="tok-typ">FieldType</span>; }</code></pre>
+    <p><code>actual</code> is orthogonal to <code>close</code>: on a streaming feed the newest candle's
+      <code>close</code> is still provisional while <code>actual</code> is the price right now. It never
+      affects a candle's own geometry — only the <a href="#actual">live-price line</a>, the price-axis
+      domain (so the line always stays on screen) and the hover readout.</p>
+    <div class="note">A transposed <code>high</code>/<code>low</code> is <strong>not</strong> an error:
+      the wick extent is taken from the min/max of all four prices, so a swapped pair still draws a
+      sensible candle rather than an inverted one.</div>
+
+    <h2 id="config">Config — top level</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>data</code> <span class="pill">required</span></td><td class="type">OhlcDataSet</td><td class="def">—</td><td>Instruments and their candles. <a href="#data">See above</a>.</td></tr>
+        <tr><td><code>spacing</code></td><td class="type">'band' | 'time'</td><td class="def">'band'</td><td>How candles are positioned along X. <a href="#spacing">See below</a>.</td></tr>
+        <tr><td><code>candles</code></td><td class="type">CandleStyleConfig</td><td class="def">—</td><td>Colors, color rule, body geometry, wicks and the solid layer. <a href="#candles">See below</a>.</td></tr>
+        <tr><td><code>actual</code></td><td class="type">ActualConfig</td><td class="def">off</td><td>Live-price line. <a href="#actual">See below</a>.</td></tr>
+        <tr><td><code>seriesIndex</code></td><td class="type">number</td><td class="def">0</td><td>Which instrument is drawn; clamped into range.</td></tr>
+        <tr><td><code>maxCandles</code></td><td class="type">number</td><td class="def">5000</td><td>Cap on candles drawn per series; extras are dropped.</td></tr>
+        <tr><td><code>maxSeries</code></td><td class="type">number</td><td class="def">1000</td><td>Cap on instruments the slider can address.</td></tr>
+        <tr><td><code>slider</code></td><td class="type">SliderConfig</td><td class="def">on</td><td>The instrument picker. Same block as the <a href="pie-chart.html#slider">pie chart's slider</a>, and hidden anyway when there is one series. When it shares the bottom edge with a shown X axis it is placed below the axis labels, not on them.</td></tr>
+        <tr><td><code>grainDensity</code></td><td class="type">number</td><td class="def">0.8</td><td>Grain budget multiplier; candles share <code>grainDensity × 20 000</code> grains by body area, so adding candles subdivides the same sand.</td></tr>
+        <tr><td><code>maxGrains</code></td><td class="type">number</td><td class="def">100000</td><td>Hard grain ceiling.</td></tr>
+        <tr><td><code>background</code></td><td class="type">string</td><td class="def">transparent</td><td>Canvas clear color.</td></tr>
+        <tr><td><code>grain</code></td><td class="type">object</td><td class="def">—</td><td><code>sizePx</code> (2.4), <code>shape</code> (<code>'disc'</code>), <code>jitter</code> (0.6), <code>settleJitter</code> (0.004). See <a href="bar-chart.html#grain">bar chart → grain</a>.</td></tr>
+        <tr><td><code>animation</code></td><td class="type">object</td><td class="def">—</td><td>Timing. <a href="#animation">See below</a>.</td></tr>
+        <tr><td><code>interaction</code></td><td class="type">object</td><td class="def">—</td><td><code>hover</code> and <code>dim</code> as on <a href="bar-chart.html#interaction">every other chart</a>, plus <a href="#pointer"><code>pointer</code></a> overrides.</td></tr>
+        <tr><td><code>axes</code></td><td class="type">{ x?, y? }</td><td class="def">off</td><td><a href="bar-chart.html#axes">Same shape as bar chart</a>. X is the period axis (and styles the slider's ticks); Y is the price axis.</td></tr>
+        <tr><td><code>legend</code></td><td class="type">LegendConfig</td><td class="def">off</td><td>Two entries — <em>Rising</em> and <em>Falling</em>. With <code>interactive</code>, clicking one isolates that group.</td></tr>
+        <tr><td><code>title</code></td><td class="type">TitleConfig</td><td class="def">off</td><td>Chart title; shares the legend's placement vocabulary.</td></tr>
+        <tr><td><code>currentValue</code></td><td class="type">object</td><td class="def">off</td><td><a href="bar-chart.html#currentvalue">Same as bar chart</a>; the default readout is <code>date · O H L C · live</code>.</td></tr>
+        <tr><td><code>fps</code></td><td class="type">FpsConfig</td><td class="def">off</td><td><a href="bar-chart.html#fps">Same as bar chart</a>.</td></tr>
+        <tr><td><code>panZoom</code></td><td class="type">PanZoomConfig</td><td class="def">off</td><td>Drag to pan, wheel/UI to zoom. <a href="data-model.html#panzoom">Shared pan &amp; zoom</a>. <code>axes: 'x'</code> is the usual choice for a price series.</td></tr>
+        <tr><td><code>backend</code></td><td class="type">'auto' | 'webgpu' | 'webgl2' | 'canvas2d'</td><td class="def">'auto'</td><td>Force a rendering backend.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="candles"><code>candles</code></h2>
+    <p>One block for everything about a candle: what color it is, what its body spans, and the solid
+      layer that resolves as the sand fades out. Mirrors the bar chart's <code>bars</code>.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>rising</code></td><td class="type">string</td><td class="def">'#2eb872'</td><td>Color of a rising candle (CSS).</td></tr>
+        <tr><td><code>falling</code></td><td class="type">string</td><td class="def">'#e0555c'</td><td>Color of a falling candle (CSS).</td></tr>
+        <tr><td><code>direction</code></td><td class="type">CandleDirection | fn</td><td class="def">'openClose'</td><td>Which difference decides rising vs falling. <a href="#direction">See below</a>.</td></tr>
+        <tr><td><code>body</code></td><td class="type">'openClose' | 'lowHigh'</td><td class="def">'openClose'</td><td>Which prices the body spans. <code>'lowHigh'</code> makes each candle a plain range bar and leaves no wick to draw.</td></tr>
+        <tr><td><code>width</code></td><td class="type">number</td><td class="def">0.62</td><td>Body width as a fraction of the x step, 0..1.</td></tr>
+        <tr><td><code>fill.opacity</code></td><td class="type">number</td><td class="def">1</td><td>Solid body fill opacity. The block's presence is what turns the fill on; the color is always the candle's own.</td></tr>
+        <tr><td><code>border.show</code></td><td class="type">boolean</td><td class="def">true*</td><td>Body outline. *Default true <em>when a <code>border</code> block is present</em>.</td></tr>
+        <tr><td><code>border.width</code> / <code>border.opacity</code></td><td class="type">number</td><td class="def">1 / 1</td><td>Outline stroke width (CSS px) and opacity.</td></tr>
+        <tr><td><code>wick.show</code></td><td class="type">boolean</td><td class="def">true</td><td>High-low wicks. On even with no <code>candles</code> block at all — see the note below.</td></tr>
+        <tr><td><code>wick.width</code> / <code>wick.opacity</code></td><td class="type">number</td><td class="def">1 / 1</td><td>Wick stroke width (CSS px) and opacity.</td></tr>
+        <tr><td><code>reveal</code></td><td class="type">RevealConfig</td><td class="def">—</td><td>Timing of the particle→solid-body crossfade: <code>start</code> (<code>'afterPour'</code>), <code>duration</code> (500 ms), <code>ease</code>, <code>grainsTo</code> (0). Shared by every visual.</td></tr>
+      </tbody>
+    </table>
+    <div class="note warn"><strong>Wicks are not part of the reveal.</strong> They are the only thing
+      carrying the high and low prices, so they are stroked solid from the first frame — while the
+      bodies are still falling sand — and never fade with <code>reveal</code>. Only the body's
+      <code>fill</code> and <code>border</code> resolve as the grains fade. Omit both and you get a
+      permanent sand chart with solid wicks (see the <a href="#examples">sand-only example</a>).</div>
+    <div class="note">A doji (open === close) still gets a minimum body height, so it carries grains
+      and draws a visible line rather than vanishing.</div>
+
+    <h2 id="direction">Color rules — <code>candles.direction</code></h2>
+    <p>Which <em>difference</em> decides a candle's color. All the rules that look backwards fall back
+      to <code>'openClose'</code> for the first candle of a series, since nothing precedes it.</p>
+    <table class="prop-table">
+      <thead><tr><th>Value</th><th>Rising when…</th></tr></thead>
+      <tbody>
+        <tr><td><code>'openClose'</code> <span class="pill">default</span></td><td><code>close &gt;= open</code> — the classic candle rule.</td></tr>
+        <tr><td><code>'closeClose'</code></td><td><code>close &gt;=</code> the <strong>previous</strong> candle's close: did the level rise since the last period.</td></tr>
+        <tr><td><code>'lowHigh'</code></td><td>this candle's low-high range <strong>midpoint</strong> is at or above the previous candle's midpoint: did the whole trading range shift up, regardless of where the period opened and closed.</td></tr>
+        <tr><td><code>'closeInRange'</code></td><td>the close sits in the upper half of the candle's <em>own</em> low-high range. Depends on no other candle.</td></tr>
+        <tr><td><code>(candle, previous, index) =&gt; boolean</code></td><td>Anything you like — a moving average, an external signal. Passing a function in place of a name plugs in a custom rule without the chart changing, the same way the scatter chart takes a custom <a href="scatter-chart.html#approximation"><code>Approximation</code></a>.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="actual"><code>actual</code> — the live-price line</h2>
+    <p>A horizontal rule across the plot at the <strong>latest</strong> <code>Candle.actual</code> in the
+      drawn series (the last candle that carries one), with a value marker on the price axis. Off by
+      default: without an <code>actual</code> block the values still travel through hover and events,
+      but nothing is drawn.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>show</code></td><td class="type">boolean</td><td class="def">true*</td><td>*True when an <code>actual</code> block is present.</td></tr>
+        <tr><td><code>color</code></td><td class="type">string</td><td class="def">currentValue color</td><td>Line and marker color (CSS).</td></tr>
+        <tr><td><code>width</code></td><td class="type">number</td><td class="def">1</td><td>Line width, CSS px.</td></tr>
+        <tr><td><code>opacity</code></td><td class="type">number</td><td class="def">0.9</td><td>Line opacity.</td></tr>
+        <tr><td><code>dash</code></td><td class="type">number[] | false</td><td class="def">[4, 4]</td><td>Dash pattern in CSS px; <code>false</code> for a solid rule.</td></tr>
+        <tr><td><code>marker</code></td><td class="type">boolean</td><td class="def">true</td><td>Draw the value marker on the Y axis (needs <code>axes.y.show</code>).</td></tr>
+        <tr><td><code>format</code></td><td class="type">(v: number) =&gt; string</td><td class="def">compact number</td><td>Format the price for that marker.</td></tr>
+      </tbody>
+    </table>
+    <p>The live price is folded into the price-axis domain, so a line that has run past every candle's
+      range still stays on screen.</p>
+
+    <h2 id="spacing"><code>spacing</code></h2>
+    <table class="prop-table">
+      <thead><tr><th>Value</th><th>Behavior</th></tr></thead>
+      <tbody>
+        <tr><td><code>'band'</code> <span class="pill">default</span></td><td>Every candle gets an evenly-spaced slot, so weekends and holidays <strong>collapse</strong> instead of leaving holes — standard trading-chart behavior. Axis ticks are the periods themselves, thinned by <code>axes.x.ticks</code> exactly like the bar chart's category axis.</td></tr>
+        <tr><td><code>'time'</code></td><td>Candles sit at their real x value on a continuous <code>LinearScale</code>/<code>TimeScale</code>, so gaps in the data <strong>show</strong> as gaps. Body width comes from the median gap between periods; ticks come from the scale.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">A <strong>categorical</strong> x has no continuous position, so <code>'time'</code>
+      always degrades to <code>'band'</code> for it. The layout reports what it actually used.</div>
+
+    <h2 id="animation"><code>animation</code></h2>
+    <div class="note warn"><strong>Units:</strong> <code>duration</code>, <code>stagger</code> and
+      <code>morphDuration</code> are in <strong>milliseconds</strong>.</div>
+    <p>Same as the bar chart, with the three-way twists named for candles:</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>duration</code></td><td class="type">number (ms)</td><td class="def">900</td><td>Per-grain travel time.</td></tr>
+        <tr><td><code>stagger</code></td><td class="type">number (ms)</td><td class="def">500</td><td>Spread of pour start times.</td></tr>
+        <tr><td><code>ease</code></td><td class="type">'linear' | 'easeOutCubic' | 'easeOutQuint'</td><td class="def">'easeOutCubic'</td><td>Grain travel easing.</td></tr>
+        <tr><td><code>morphDuration</code></td><td class="type">number (ms)</td><td class="def">duration + stagger</td><td>Body-tween + grain-fade window for a data or instrument change.</td></tr>
+        <tr><td><code>reflow</code></td><td class="type">'translate' | 'reshuffle' | 'withCandle'</td><td class="def">'translate'</td><td>How an <strong>unchanged</strong> period's grains move. <code>'withCandle'</code> locks them to the body: rigid move, no delay, no grain-fade flash.</td></tr>
+        <tr><td><code>morphGrains</code></td><td class="type">boolean</td><td class="def">true</td><td><code>false</code> snaps grains to their new positions so only the solid body tweens.</td></tr>
+        <tr><td><code>enter</code></td><td class="type">'pour' | 'rise' | 'continue'</td><td class="def">'pour'</td><td>How an <strong>added</strong> candle's grains arrive. <code>'continue'</code> skips the emergence — the right choice for a streaming feed.</td></tr>
+        <tr><td><code>exit</code></td><td class="type">'fall' | 'vanish'</td><td class="def">'fall'</td><td>How a <strong>removed</strong> candle's grains leave.</td></tr>
+      </tbody>
+    </table>
+    <div class="note"><strong>Candle identity is the period (<code>x</code>)</strong>, not the array
+      position. That is what makes a rolling window animate correctly: dropping the oldest bar and
+      appending a new one shifts every index, but each surviving period keeps its identity, so
+      unchanged candles <em>slide</em> instead of being treated as removed-and-re-added. A candle with
+      no predecessor opens from a flat line at its own level.</div>
+
+    <h2 id="pointer">Overriding mouse events — <code>interaction.pointer</code></h2>
+    <p>Every built-in mouse reaction can be replaced. A handler that returns exactly <code>false</code>
+      <strong>suppresses</strong> the chart's own default for that gesture (and the event it would have
+      emitted); returning anything else — including nothing — lets the default run.</p>
+    <table class="prop-table">
+      <thead><tr><th>Handler</th><th>Signature</th><th>Default it suppresses</th></tr></thead>
+      <tbody>
+        <tr><td><code>hover</code></td><td class="type">(candle, event) =&gt; unknown</td><td>Hover highlight, readout and the <code>hover</code> event.</td></tr>
+        <tr><td><code>click</code></td><td class="type">(candle, event) =&gt; unknown</td><td>The <code>click</code> event.</td></tr>
+        <tr><td><code>legendClick</code></td><td class="type">(index) =&gt; unknown</td><td>The isolate/dim toggle.</td></tr>
+        <tr><td><code>sliderSeek</code></td><td class="type">(index) =&gt; unknown</td><td>The instrument change from a slider drag/click.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="shared">Shared blocks</h2>
+    <p><code>axes</code>, <code>legend</code>, <code>title</code>, <code>currentValue</code>,
+      <code>interaction.hover</code>, <code>interaction.dim</code> and <code>fps</code> are the same
+      config the bar chart documents — see
+      <a href="bar-chart.html#axes">bar chart → axes / legend / currentValue / fps</a>. Pan &amp; zoom
+      is the shared <a href="data-model.html#panzoom"><code>panZoom</code></a> block.</p>
+    <div class="note"><code>axes.x</code> does double duty: it styles the <strong>period axis</strong>
+      and the <strong>series slider's</strong> ticks (count, format, label, font, color), the same way
+      it styles the pie chart's slider.</div>
+    <div class="note">The price axis has no meaningful baseline — prices don't start at zero — so
+      <code>axes.y</code>'s domain is the candles' own low/high extent (plus the live price), padded
+      ~6% on each side, rather than being anchored to 0.</div>
+
+    <h2 id="methods">Methods</h2>
+    <table class="prop-table">
+      <thead><tr><th>Method</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>whenReady(): Promise&lt;void&gt;</code></td><td>Resolves once the backend is initialized and the first frame is scheduled.</td></tr>
+        <tr><td><code>get backend</code></td><td><code>'webgpu' | 'webgl2' | 'canvas2d' | null</code>.</td></tr>
+        <tr><td><code>on(event, fn)</code></td><td>Subscribe to <code>hover</code>, <code>click</code>, <code>seriesChange</code> or <code>seriesFocus</code>; returns an unsubscribe function.</td></tr>
+        <tr><td><code>update(data)</code></td><td>Replace the whole <code>OhlcDataSet</code>; candles morph and the bodies tween (no re-pour).</td></tr>
+        <tr><td><code>update(patches, seriesIndex?)</code></td><td>Set prices on existing candles in place, matched by <code>x</code>. Omitted fields keep their values, so a feed can patch just <code>close</code>/<code>actual</code>. Defaults to the series on screen.</td></tr>
+        <tr><td><code>add(candles, seriesIndex?)</code></td><td>Append one or more <code>Candle</code>s (a series index past the end creates one); new candles arrive per <code>animation.enter</code>.</td></tr>
+        <tr><td><code>remove(refs, seriesIndex?)</code></td><td>Remove candles by index (negative = from the end) or <code>{ x }</code> match; the rest reflow.</td></tr>
+        <tr><td><code>setSeriesIndex(i)</code></td><td>Show another instrument — candles morph across and the slider handle eases over, the same code path a drag takes. Fires <code>seriesChange</code>.</td></tr>
+        <tr><td><code>getSeriesIndex()</code> / <code>seriesCount</code> / <code>getSeriesKeys()</code></td><td>The current instrument, how many the slider addresses, and their keys.</td></tr>
+        <tr><td><code>focusSeries(index)</code></td><td>Isolate a <strong>direction group</strong> — <code>0</code> rising, <code>1</code> falling — at full opacity while the other dims to <code>interaction.dim.opacity</code>; <code>null</code> clears it. Those groups are what the legend describes (the pie chart's <code>focusSeries</code> targets its slices the same way, not the slider's series). Fires <code>seriesFocus</code>.</td></tr>
+        <tr><td><code>getFocusedSeries()</code></td><td><code>number | null</code> — the isolated direction group, or <code>null</code>.</td></tr>
+        <tr><td><code>repour()</code></td><td>Re-run the pour-in animation with the current data (no morph).</td></tr>
+        <tr><td><code>getData(): OhlcDataSet</code></td><td>Deep-cloned snapshot of the current dataset.</td></tr>
+        <tr><td><code>dispose()</code></td><td>Cancel the loop, remove listeners, free the backend and DOM.</td></tr>
+      </tbody>
+    </table>
+    <p>It also implements the shared <a href="data-model.html#panzoom"><code>PanZoomable</code></a>
+      interface: <code>getView()</code>, <code>setView(v)</code>, <code>panBy()</code>,
+      <code>panTo()</code>, <code>zoomBy()</code>, <code>zoomTo()</code>, <code>resetView()</code>,
+      <code>isPanZoomEnabled()</code>.</p>
+
+    <h2 id="events">Events</h2>
+    <p><code>hover</code> carries <code>{ candle: CandleMeta | null }</code> and <code>click</code>
+      carries <code>{ candle, event }</code>. Hit-testing is <strong>by column</strong>: anywhere in a
+      candle's slot selects it, the way a trading chart's crosshair behaves, rather than demanding a hit
+      on the thin body.</p>
+    <pre><code><span class="tok-com">// CandleMeta — metadata for one drawn candle</span>
+{
+  candleId: <span class="tok-typ">number</span>;          <span class="tok-com">// index within the drawn series; also the grain barId</span>
+  indexInSeries: <span class="tok-typ">number</span>;
+  seriesIndex: <span class="tok-typ">number</span>;
+  seriesKey: <span class="tok-typ">Scalar | undefined</span>;
+  xValue: <span class="tok-typ">Scalar</span>;
+  open: <span class="tok-typ">number</span>; high: <span class="tok-typ">number</span>; low: <span class="tok-typ">number</span>; close: <span class="tok-typ">number</span>;
+  actual: <span class="tok-typ">number | undefined</span>;
+  rising: <span class="tok-typ">boolean</span>;            <span class="tok-com">// what the direction rule decided</span>
+  x0: <span class="tok-typ">number</span>; x1: <span class="tok-typ">number</span>; cx: <span class="tok-typ">number</span>;      <span class="tok-com">// body edges + center, layout space [0,1]</span>
+  bodyLow: <span class="tok-typ">number</span>; bodyHigh: <span class="tok-typ">number</span>;   <span class="tok-com">// body extent, layout space</span>
+  wickLow: <span class="tok-typ">number</span>; wickHigh: <span class="tok-typ">number</span>;   <span class="tok-com">// full price range, layout space</span>
+  color: <span class="tok-typ">RGBA</span>;
+}</code></pre>
+    <p><code>seriesChange</code> carries <code>{ index, key }</code> (the instrument the slider moved to)
+      and <code>seriesFocus</code> carries <code>{ index: number | null }</code> (the isolated direction
+      group).</p>
+
+    <h2 id="examples">Examples</h2>
+
+    <h3>Solid candles with axes and a live price</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">CandlestickChart</span>(el, {
+  data: {
+    series: [{
+      key: <span class="tok-str">'ACME'</span>,
+      candles: [
+        { x: <span class="tok-key">new</span> <span class="tok-fn">Date</span>(<span class="tok-str">'2026-01-05'</span>), open: <span class="tok-num">120</span>, high: <span class="tok-num">124</span>, low: <span class="tok-num">119</span>, close: <span class="tok-num">123</span> },
+        { x: <span class="tok-key">new</span> <span class="tok-fn">Date</span>(<span class="tok-str">'2026-01-06'</span>), open: <span class="tok-num">123</span>, high: <span class="tok-num">125</span>, low: <span class="tok-num">121</span>, close: <span class="tok-num">121.5</span>, actual: <span class="tok-num">122.2</span> },
+      ],
+    }],
+  },
+  candles: {
+    fill: { opacity: <span class="tok-num">0.9</span> },
+    border: { width: <span class="tok-num">1</span> },
+    reveal: { duration: <span class="tok-num">500</span>, grainsTo: <span class="tok-num">0.12</span> },
+  },
+  actual: { show: <span class="tok-key">true</span> },
+  axes: { x: { show: <span class="tok-key">true</span>, ticks: <span class="tok-num">6</span> }, y: { show: <span class="tok-key">true</span>, gridLines: <span class="tok-key">true</span> } },
+});</code></pre>
+
+    <h3>Sand only — no solid bodies</h3>
+    <pre><code><span class="tok-com">// No fill and no border: the bodies stay sand forever, only the wicks are solid.</span>
+<span class="tok-key">new</span> <span class="tok-fn">CandlestickChart</span>(el, {
+  data,
+  grainDensity: <span class="tok-num">2.2</span>,
+  candles: { width: <span class="tok-num">0.8</span>, reveal: { grainsTo: <span class="tok-num">1</span> } },
+});</code></pre>
+
+    <h3>Coloring by the previous close, not the open</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">CandlestickChart</span>(el, {
+  data,
+  candles: { direction: <span class="tok-str">'closeClose'</span>, rising: <span class="tok-str">'#2eb872'</span>, falling: <span class="tok-str">'#e0555c'</span> },
+});</code></pre>
+
+    <h3>A custom color rule</h3>
+    <pre><code><span class="tok-com">// Rising while the close holds above a level your own code computes.</span>
+<span class="tok-key">new</span> <span class="tok-fn">CandlestickChart</span>(el, {
+  data,
+  candles: {
+    <span class="tok-fn">direction</span>: (candle, previous, index) => candle.close &gt;= <span class="tok-fn">movingAverage</span>(index),
+  },
+});</code></pre>
+
+    <h3>Range bars instead of candles</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">CandlestickChart</span>(el, {
+  data,
+  candles: { body: <span class="tok-str">'lowHigh'</span>, width: <span class="tok-num">0.5</span>, fill: { opacity: <span class="tok-num">0.7</span> } },
+});</code></pre>
+
+    <h3>Streaming: tick the live price, roll the window</h3>
+    <pre><code><span class="tok-key">const</span> chart = <span class="tok-key">new</span> <span class="tok-fn">CandlestickChart</span>(el, {
+  data,
+  candles: { fill: {}, border: {} },
+  actual: { show: <span class="tok-key">true</span> },
+  animation: { enter: <span class="tok-str">'continue'</span> },   <span class="tok-com">// new bars appear settled, no pour</span>
+});
+
+<span class="tok-com">// Every tick: patch only what moved on the bar still being filled.</span>
+feed.<span class="tok-fn">on</span>(<span class="tok-str">'price'</span>, ({ x, price }) => {
+  chart.<span class="tok-fn">update</span>([{ x, close: price, actual: price }]);
+});
+
+<span class="tok-com">// Every period: append the new bar and drop the oldest — surviving candles slide.</span>
+feed.<span class="tok-fn">on</span>(<span class="tok-str">'bar'</span>, (bar) => {
+  chart.<span class="tok-fn">add</span>(bar);
+  chart.<span class="tok-fn">remove</span>(<span class="tok-num">0</span>);
+});</code></pre>
+
+    <h3>Switching instruments</h3>
+    <pre><code><span class="tok-key">const</span> chart = <span class="tok-key">new</span> <span class="tok-fn">CandlestickChart</span>(el, {
+  data: { series: [{ key: <span class="tok-str">'ACME'</span>, candles: acme }, { key: <span class="tok-str">'GLOBEX'</span>, candles: globex }] },
+  slider: { show: <span class="tok-key">true</span>, position: <span class="tok-str">'bottom'</span> },
+  axes: { x: { show: <span class="tok-key">true</span>, label: <span class="tok-str">'instrument'</span> } },
+});
+
+chart.<span class="tok-fn">on</span>(<span class="tok-str">'seriesChange'</span>, ({ index, key }) => console.<span class="tok-fn">log</span>(<span class="tok-str">'now showing'</span>, key));
+chart.<span class="tok-fn">setSeriesIndex</span>(<span class="tok-num">1</span>);   <span class="tok-com">// same animation as dragging the slider</span>
+</code></pre>
+
+    <h3>Isolating rising or falling candles</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">CandlestickChart</span>(el, {
+  data,
+  candles: { fill: {} },
+  legend: { show: <span class="tok-key">true</span>, interactive: <span class="tok-key">true</span> },   <span class="tok-com">// entries: Rising / Falling</span>
+  interaction: { dim: { opacity: <span class="tok-num">0.15</span> } },
+});
+
+chart.<span class="tok-fn">focusSeries</span>(<span class="tok-num">0</span>);   <span class="tok-com">// show only rising candles at full opacity</span></code></pre>
+
+    <h3>Driving your own tooltip (overriding the mouse events)</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">CandlestickChart</span>(el, {
+  data,
+  interaction: {
+    pointer: {
+      <span class="tok-fn">hover</span>(candle, event) {
+        <span class="tok-fn">myTooltip</span>(candle, event);
+        <span class="tok-key">return</span> <span class="tok-key">false</span>;   <span class="tok-com">// suppress the built-in readout + hover event</span>
+      },
+      <span class="tok-fn">click</span>(candle) {
+        <span class="tok-fn">selectPeriod</span>(candle?.xValue);
+      },   <span class="tok-com">// returns nothing → the click event still fires</span>
+    },
+  },
+});</code></pre>
+
+    <div class="foot">
+      <p>© <span id="yr">2026</span> · <a href="license.html">License</a> ·
+        <a href="data-model.html">Data model →</a></p>
+    </div>
+  </main>
+</div>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
+</body>
+</html>
