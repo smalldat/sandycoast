@@ -119,6 +119,15 @@ Plan 03: per-bar solid **fill + border** that fade in while the sand particles
 fade out (`bars` config; see [plans/03-bar-borders-fill.md](https://github.com/smalldat/sandycoast/blob/main/plans/03-bar-borders-fill.md)).
 Plan 05: live **`update` / `add` / `remove`** with smooth border tween + grain
 morph, no full re-pour (see [plans/05-live-data-update-add-remove.md](https://github.com/smalldat/sandycoast/blob/main/plans/05-live-data-update-add-remove.md)).
+`WindRoseChart`: a two-indicator data model (`WindDataSet` — one time
+dimension plus direction and intensity), readings binned by direction into
+compass sectors and stacked as annular **petal segments** (`petals.mode`:
+`bands`, the classic meteorological rose, or one segment per reading), a
+per-sector cap that **merges** its tail rather than dropping readings,
+latest-value highlighting, a **time table** (`table`) whose rows and petals
+select both ways, and **overridable mouse events** (`interaction.mouse`) whose
+hooks can run, defer or cancel the built-in behaviour.
+See [plans/12-windrose-chart.md](https://github.com/smalldat/sandycoast/blob/main/plans/12-windrose-chart.md).
 `CandlestickChart`: OHLC + live-price data (`OhlcDataSet`), sand bodies that
 resolve into solid candles with always-solid high-low wicks, a **configurable
 rising/falling colour rule** (`candles.direction`: `openClose` / `closeClose` /
@@ -144,6 +153,7 @@ Static docs (no build step) are served from [GitHub Pages](https://smalldat.gith
 - [Line chart](https://smalldat.github.io/sandycoast/line-chart.html)
 - [Scatter chart](https://smalldat.github.io/sandycoast/scatter-chart.html)
 - [Pie chart](https://smalldat.github.io/sandycoast/pie-chart.html)
+- [Wind rose](https://smalldat.github.io/sandycoast/windrose-chart.html) — petal binning, bands, time table
 - [Candlestick chart](https://smalldat.github.io/sandycoast/candlestick-chart.html) — OHLC, colour rules, live price
 - [License](https://smalldat.github.io/sandycoast/license.html)
 
