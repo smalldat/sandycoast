@@ -27,6 +27,7 @@
       <a href="scatter-chart.html">Scatter chart</a>
       <a href="pie-chart.html">Pie chart</a>
       <a href="windrose-chart.html">Wind rose</a>
+      <a href="candlestick-chart.html">Candlestick chart</a>
     </nav>
     <nav class="nav-group">
       <h4>Project</h4>
@@ -48,6 +49,7 @@
       <a href="#fromrows">Building from rows</a>
       <a href="#helpers">Array helpers</a>
       <a href="#mesh">Mesh data &amp; approximation</a>
+      <a href="#ohlc">OHLC data (candlesticks)</a>
       <a href="#scales">Scales</a>
       <a href="#colors">Colors</a>
       <a href="#easing">Easing</a>
@@ -163,6 +165,42 @@
     <p>Built-ins: <code>NoneApproximation</code>, <code>StraightApproximation</code>,
       <code>SplineApproximation</code>, <code>LeastSquaresApproximation</code>. Full behavior table on
       the <a href="scatter-chart.html#approximation-kinds">scatter chart page</a>.</p>
+
+    <h2 id="ohlc">OHLC data (candlesticks)</h2>
+    <p>The <a href="candlestick-chart.html">candlestick chart</a> carries <strong>four prices per
+      period</strong> instead of a single <code>y</code>, so — like the mesh types above — it gets an
+      <strong>additive sibling</strong> to <code>Point</code>/<code>DataSet</code> rather than bending
+      <code>y</code> into a tuple.</p>
+    <pre><code><span class="tok-key">interface</span> <span class="tok-typ">Candle</span>&lt;X = <span class="tok-typ">Scalar</span>&gt; {
+  x: X;                <span class="tok-com">// period start: a Date, a number, or a category label</span>
+  open: <span class="tok-typ">number</span>;
+  high: <span class="tok-typ">number</span>;
+  low: <span class="tok-typ">number</span>;
+  close: <span class="tok-typ">number</span>;
+  actual?: <span class="tok-typ">number</span>;      <span class="tok-com">// live / last traded price — orthogonal to close</span>
+}
+
+<span class="tok-com">// Two instruments can't share an x-slot legibly, so — like the pie chart's</span>
+<span class="tok-com">// series axis — the series array is a *selector*: one is drawn at a time.</span>
+<span class="tok-key">interface</span> <span class="tok-typ">CandleSeries</span>&lt;X = <span class="tok-typ">Scalar</span>&gt; {
+  key?: <span class="tok-typ">Scalar</span>;          <span class="tok-com">// slider / legend label</span>
+  candles: <span class="tok-typ">Candle</span>&lt;X&gt;[];
+}
+
+<span class="tok-key">interface</span> <span class="tok-typ">OhlcDataSet</span>&lt;X = <span class="tok-typ">Scalar</span>&gt; {
+  series: <span class="tok-typ">CandleSeries</span>&lt;X&gt;[];
+  xType?: <span class="tok-typ">FieldType</span>;
+}</code></pre>
+    <p><code>resolveOhlcTypes</code> / <code>validateOhlc</code> / <code>allCandles</code> are the
+      <code>OhlcDataSet</code> counterparts of <code>resolveTypes</code> / <code>validate</code> /
+      <code>meshPoints</code>. The array helpers have candle twins too —
+      <code>patchCandles</code> (set only the prices you pass, matched by <code>x</code>),
+      <code>appendCandles</code> and <code>removeCandles</code> (by index or <code>{ x }</code>) —
+      which is what <code>update</code> / <code>add</code> / <code>remove</code> call. All of them are
+      pure and exported for use off-chart.</p>
+    <div class="note">A candle's <strong>color</strong> is not a series color: it comes from a
+      configurable <a href="candlestick-chart.html#direction">difference rule</a> (rising vs falling),
+      so the palette is two entries and the legend describes those two groups.</div>
 
     <h2 id="scales">Scales</h2>
     <p>Charts pick a scale from each field's type automatically. The scale primitives are exported for
@@ -285,13 +323,14 @@ chart.<span class="tok-fn">resetView</span>();           <span class="tok-com">/
     <h2 id="exports">What's exported</h2>
     <p>From <code>@smalldat/sandycoast</code>:</p>
     <ul>
-      <li><strong>Charts:</strong> <code>BarChart</code>, <code>LineChart</code>, <code>ScatterChart</code> (+ their config &amp; meta types).</li>
+      <li><strong>Charts:</strong> <code>BarChart</code>, <code>LineChart</code>, <code>ScatterChart</code>, <code>PieChart</code>, <code>WindRoseChart</code>, <code>CandlestickChart</code> (+ their config &amp; meta types).</li>
       <li><strong>Data:</strong> <code>fromRows</code>, <code>patchPoints</code>, <code>appendPoints</code>, <code>removePoints</code>, <code>seriesKeys</code>, <code>validate</code>, <code>inferType</code>, <code>resolveTypes</code>, <code>toNumeric</code>, <code>DataError</code> (+ <code>DataSet</code>, <code>Point</code>, <code>Scalar</code>, <code>FieldType</code>, <code>PointPatch</code>, <code>PointRef</code> types).</li>
       <li><strong>Mesh &amp; approximation:</strong> <code>meshPoints</code>, <code>resolveMeshTypes</code>, <code>validateMesh</code>, <code>NoneApproximation</code>, <code>StraightApproximation</code>, <code>SplineApproximation</code>, <code>LeastSquaresApproximation</code> (+ <code>MeshValue</code>, <code>MeshPoint</code>, <code>MeshSeries</code>, <code>MeshDataSet</code>, <code>Approximation</code>, <code>FitPoint</code> types). See <a href="#mesh">Mesh data &amp; approximation</a>.</li>
+      <li><strong>OHLC (candlesticks):</strong> <code>allCandles</code>, <code>resolveOhlcTypes</code>, <code>validateOhlc</code>, <code>patchCandles</code>, <code>appendCandles</code>, <code>removeCandles</code>, <code>layoutCandles</code>, <code>hitCandle</code>, <code>resolveDirection</code>, <code>resolveCandleStyle</code>, <code>resolveActual</code> (+ <code>Candle</code>, <code>CandleSeries</code>, <code>OhlcDataSet</code>, <code>CandlePatch</code>, <code>CandleRef</code>, <code>CandleMeta</code>, <code>CandleDirection</code> types). See <a href="#ohlc">OHLC data</a>.</li>
       <li><strong>Scales:</strong> <code>LinearScale</code>, <code>TimeScale</code>, <code>BandScale</code>, <code>makeScale</code>.</li>
       <li><strong>Color:</strong> <code>DEFAULT_PALETTE</code>, <code>parseColor</code>, <code>cssRGBA</code>.</li>
       <li><strong>Pan &amp; zoom:</strong> <code>PanZoomController</code>, <code>ZoomControls</code>, <code>resolvePanZoom</code>, <code>IDENTITY_VIEW</code> (+ <code>PanZoomable</code>, <code>PanZoomConfig</code>, <code>ViewTransform</code>, <code>ZoomCorner</code> types).</li>
-      <li><strong>Rendering &amp; particles (advanced / custom visuals):</strong> <code>pickRenderer</code>, <code>allocGrains</code>, <code>packBars</code>, <code>packLine</code>, <code>packBlobs</code>, <code>grainCounts</code>, <code>lineGrainCounts</code>, <code>blobGrainCounts</code>, <code>scatterStarts</code>, <code>evalGrain</code>, <code>ease</code>, <code>tracePolylinePath</code>, <code>catmullRomToBezier</code>, and their types.</li>
+      <li><strong>Rendering &amp; particles (advanced / custom visuals):</strong> <code>pickRenderer</code>, <code>allocGrains</code>, <code>packBars</code>, <code>packLine</code>, <code>packBlobs</code>, <code>packBoxes</code>, <code>grainCounts</code>, <code>lineGrainCounts</code>, <code>blobGrainCounts</code>, <code>boxGrainCounts</code>, <code>scatterStarts</code>, <code>evalGrain</code>, <code>ease</code>, <code>tracePolylinePath</code>, <code>catmullRomToBezier</code>, and their types.</li>
     </ul>
 
     <div class="foot">

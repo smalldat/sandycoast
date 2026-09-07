@@ -1,4 +1,5 @@
 import type { MeshDataSet, MeshPoint } from './mesh.js';
+import type { Candle, CandlePatch, CandleRef, OhlcDataSet } from './ohlc.js';
 import type {
   AccessorSpec,
   DataSet,
@@ -198,7 +199,7 @@ export function validateMesh(ds: MeshDataSet): void {
 // --- WindDataSet counterparts (wind rose chart) -----------------------------
 //
 // A wind observation carries one dimension (time) and two indicators
-// (direction, intensity) — a shape neither Point<X,Y,Z> nor MeshPoint has a
+// (direction, intensity) â€” a shape neither Point<X,Y,Z> nor MeshPoint has a
 // slot for (see core/data/wind.ts), so it needs its own validate/normalize.
 
 const TAU = Math.PI * 2;
@@ -206,7 +207,7 @@ const TAU = Math.PI * 2;
 /**
  * Validate structural invariants of a wind dataset; throws {@link DataError}.
  *
- * Non-finite and negative *values* are not an error — a live feed produces
+ * Non-finite and negative *values* are not an error â€” a live feed produces
  * those, and {@link normalizeWind} drops those rows. What throws here is a
  * mis-shaped dataset: a missing field, a field of the wrong kind, or a
  * `direction` that cannot mean what `directionUnit` says it means.
@@ -223,13 +224,13 @@ export function validateWind(ds: WindDataSet): void {
     }
     if (typeof p.direction !== 'number') throw new DataError(`${at}.direction must be a number`);
     if (typeof p.intensity !== 'number') throw new DataError(`${at}.intensity must be a number`);
-    // Degrees wrap freely (370° and -10° are both meaningful headings), but a
+    // Degrees wrap freely (370Â° and -10Â° are both meaningful headings), but a
     // "radian" outside one turn is almost always degrees mislabelled, and a
     // silent reinterpretation would rotate the whole rose without saying so.
     if (unit === 'rad' && Number.isFinite(p.direction)) {
       if (p.direction < 0 || p.direction > TAU + 1e-9) {
         throw new DataError(
-          `${at}.direction (${p.direction}) is outside [0, 2π] but directionUnit is 'rad' — did you mean directionUnit: 'deg'?`,
+          `${at}.direction (${p.direction}) is outside [0, 2Ď€] but directionUnit is 'rad' â€” did you mean directionUnit: 'deg'?`,
         );
       }
     }
@@ -238,10 +239,10 @@ export function validateWind(ds: WindDataSet): void {
 
 /**
  * Normalize a wind dataset for the chart: direction to radians clockwise from
- * north in `[0, 2π)`, time to epoch ms, rows sorted oldest → newest.
+ * north in `[0, 2Ď€)`, time to epoch ms, rows sorted oldest â†’ newest.
  *
- * Rows whose time, direction or intensity is non-finite — or whose intensity is
- * negative — are **dropped rather than clamped**: a NaN heading has no sector,
+ * Rows whose time, direction or intensity is non-finite â€” or whose intensity is
+ * negative â€” are **dropped rather than clamped**: a NaN heading has no sector,
  * and inventing one would put a mark somewhere the data never claimed. The
  * count is reported so a caller can surface the disagreement.
  *
@@ -279,4 +280,106 @@ export function normalizeWind<Custom>(ds: WindDataSet<Custom>): NormalizedWind<C
     intensityLabel: ds.intensityLabel ?? 'Speed',
     intensityUnit: ds.intensityUnit ?? '',
   };
+}
+
+// --- OhlcDataSet counterparts (candlestick chart) --------------------------
+//
+// An OhlcDataSet carries four prices per x instead of a single `y` and groups
+// candles by an explicit series array (see core/data/ohlc.ts), so it needs its
+// own resolveTypes/validate rather than reusing either set above.
+
+/** The four price fields every candle carries, in a fixed order. */
+const PRICE_FIELDS = ['open', 'high', 'low', 'close'] as const;
+
+/** All candles across every series of an OHLC dataset, in series order. */
+export function allCandles(ds: OhlcDataSet): Candle[] {
+  const out: Candle[] = [];
+  for (const s of ds.series) out.push(...s.candles);
+  return out;
+}
+
+/** Resolve the x field type for an OHLC dataset, respecting an explicit override. */
+export function resolveOhlcTypes(ds: OhlcDataSet): { xType: FieldType } {
+  const candles = allCandles(ds);
+  if (candles.length === 0) return { xType: ds.xType ?? 'category' };
+  const sx = firstNonNull(candles, (c) => c.x) ?? candles[0]!;
+  return { xType: ds.xType ?? inferType(sx.x) };
+}
+
+/**
+ * Validate structural invariants of an OHLC dataset; throws {@link DataError}.
+ * `high < low` is *not* an error â€” the layout takes the wick extent from the
+ * min/max of all four prices, so a transposed pair still draws something
+ * sensible rather than an inverted candle.
+ */
+export function validateOhlc(ds: OhlcDataSet): void {
+  if (!Array.isArray(ds.series)) throw new DataError('ohlcDataset.series must be an array');
+  for (let si = 0; si < ds.series.length; si++) {
+    const s = ds.series[si]!;
+    if (!Array.isArray(s.candles)) {
+      throw new DataError(`ohlcDataset.series[${si}].candles must be an array`);
+    }
+    for (let i = 0; i < s.candles.length; i++) {
+      const c = s.candles[i]!;
+      const at = `ohlcDataset.series[${si}].candles[${i}]`;
+      if (c.x === null || c.x === undefined) throw new DataError(`${at}.x is missing`);
+      for (const f of PRICE_FIELDS) {
+        if (typeof c[f] !== 'number' || !Number.isFinite(c[f])) {
+          throw new DataError(`${at}.${f} must be a finite number`);
+        }
+      }
+      if (c.actual !== undefined && (typeof c.actual !== 'number' || !Number.isFinite(c.actual))) {
+        throw new DataError(`${at}.actual must be a finite number when present`);
+      }
+    }
+  }
+}
+
+/** Whether candle `c` matches `x`, compared by `String()` like {@link patchPoints}. */
+function candleMatches(c: Candle, x: Scalar): boolean {
+  return String(c.x) === String(x);
+}
+
+/**
+ * Return a copy of `candles` with each patch's given prices applied to the
+ * candle at that `x`. Candles are cloned; the input array is untouched.
+ * Omitted price fields keep their current value, so a live feed can patch just
+ * `close`/`actual` without restating the rest of the bar.
+ */
+export function patchCandles(candles: Candle[], patches: CandlePatch[]): Candle[] {
+  const out = candles.map((c) => ({ ...c }));
+  for (const patch of patches) {
+    for (const c of out) {
+      if (!candleMatches(c, patch.x)) continue;
+      for (const f of PRICE_FIELDS) {
+        const v = patch[f];
+        if (v !== undefined) c[f] = v;
+      }
+      if (patch.actual !== undefined) c.actual = patch.actual;
+    }
+  }
+  return out;
+}
+
+/** Return a new array with `add` appended (both cloned). */
+export function appendCandles(candles: Candle[], add: Candle[]): Candle[] {
+  return [...candles.map((c) => ({ ...c })), ...add.map((c) => ({ ...c }))];
+}
+
+/**
+ * Return a copy of `candles` with every candle matched by a {@link CandleRef}
+ * removed. Numeric refs are positional (negative counts from the end); object
+ * refs match by `x`.
+ */
+export function removeCandles(candles: Candle[], refs: CandleRef[]): Candle[] {
+  const drop = new Set<number>();
+  const matchers: Scalar[] = [];
+  for (const r of refs) {
+    if (typeof r === 'number') drop.add(r < 0 ? candles.length + r : r);
+    else matchers.push(r.x);
+  }
+  return candles.filter((c, i) => {
+    if (drop.has(i)) return false;
+    return !matchers.some((x) => candleMatches(c, x));
+  });
 }

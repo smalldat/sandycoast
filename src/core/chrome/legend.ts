@@ -23,13 +23,18 @@ const ALIGN: Record<ResolvedLegend['align'], string> = {
 export class Legend {
   private root: HTMLDivElement;
   private cfg: ResolvedLegend;
-  private onEntryClick: ((index: number) => void) | undefined;
+  private onEntryClick: ((index: number, event: MouseEvent | KeyboardEvent) => void) | undefined;
   private items: HTMLSpanElement[] = [];
   private focused: number | null = null;
   /** How far in another layer on this edge already pushed, CSS px. */
   private edgeOffset = 0;
 
-  constructor(host: HTMLElement, cfg: ResolvedLegend, onEntryClick?: (index: number) => void) {
+  constructor(
+    host: HTMLElement,
+    cfg: ResolvedLegend,
+    /** Entry click/Enter; the event lets a chart run it through a mouse hook. */
+    onEntryClick?: (index: number, event: MouseEvent | KeyboardEvent) => void,
+  ) {
     this.cfg = cfg;
     this.onEntryClick = onEntryClick;
     this.root = document.createElement('div');
@@ -76,11 +81,11 @@ export class Legend {
         item.setAttribute('role', 'button');
         item.setAttribute('tabindex', '0');
         item.setAttribute('aria-pressed', 'false');
-        item.addEventListener('click', () => this.onEntryClick?.(i));
+        item.addEventListener('click', (ev) => this.onEntryClick?.(i, ev));
         item.addEventListener('keydown', (ev) => {
           if (ev.key === 'Enter' || ev.key === ' ') {
             ev.preventDefault();
-            this.onEntryClick?.(i);
+            this.onEntryClick?.(i, ev);
           }
         });
       }

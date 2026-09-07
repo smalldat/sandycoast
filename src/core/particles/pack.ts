@@ -119,36 +119,104 @@ export function packBars(
   opts: PackOptions,
   offset = 0,
 ): number {
+  // A bar is a box anchored at the baseline; the grid packing is identical.
+  return packRects(bars, counts, out, opts, offset, () => 0);
+}
+
+/**
+ * A free-floating rectangle in normalized layout space `[0,1]`, origin
+ * bottom-left, +y up. Unlike {@link BarRect} it carries its own bottom edge, so
+ * it can sit anywhere in the plot rather than growing from the baseline — a
+ * candlestick body, for instance.
+ */
+export interface BoxRect {
+  /** Left edge, [0,1]. */
+  x: number;
+  /** Bottom edge, [0,1]. */
+  y: number;
+  /** Width, [0,1]. */
+  width: number;
+  /** Height (grows up from `y`), [0,1]. */
+  height: number;
+  colorIdx: number;
+  /** Box id for hover hit-testing / highlight (shares the grain `barId` slot). */
+  barId: number;
+}
+
+/** Area of a box, used to weight its share of the grain budget. */
+export function boxArea(b: BoxRect): number {
+  return Math.max(0, b.width) * Math.max(0, b.height);
+}
+
+/**
+ * Grains per box: the density-driven {@link grainBudget} shared out in
+ * proportion to box area, so adding boxes subdivides the same sand budget
+ * rather than asking for more. Mirrors {@link grainCounts} for free rects.
+ */
+export function boxGrainCounts(boxes: BoxRect[], opts: PackOptions): number[] {
+  return distribute(grainBudget(opts), boxes.map(boxArea));
+}
+
+/**
+ * Pack grains into each free-floating box on a jittered grid and write target
+ * positions/attributes into `out` starting at `offset`. Returns grains written.
+ */
+export function packBoxes(
+  boxes: BoxRect[],
+  counts: number[],
+  out: PackTarget,
+  opts: PackOptions,
+  offset = 0,
+): number {
+  return packRects(boxes, counts, out, opts, offset, (b) => b.y);
+}
+
+/**
+ * Shared jittered-grid packing for axis-aligned rectangles. `bottomOf` supplies
+ * each rect's bottom edge, which is the only thing separating a baseline-
+ * anchored {@link BarRect} from a free-floating {@link BoxRect}.
+ */
+function packRects<
+  R extends { x: number; width: number; height: number; colorIdx: number; barId: number },
+>(
+  rects: R[],
+  counts: number[],
+  out: PackTarget,
+  opts: PackOptions,
+  offset: number,
+  bottomOf: (r: R) => number,
+): number {
   const jitter = opts.jitter ?? 0.6;
   const rng = mulberry32(opts.seed ?? 1);
   let w = offset;
 
-  for (let bi = 0; bi < bars.length; bi++) {
-    const bar = bars[bi]!;
+  for (let bi = 0; bi < rects.length; bi++) {
+    const rect = rects[bi]!;
     const n = counts[bi]!;
-    if (n <= 0 || bar.width <= 0 || bar.height <= 0) continue;
+    if (n <= 0 || rect.width <= 0 || rect.height <= 0) continue;
 
-    // Choose grid dims to match the bar's aspect ratio.
-    const aspect = bar.width / bar.height;
+    // Choose grid dims to match the rect's aspect ratio.
+    const aspect = rect.width / rect.height;
     let cols = Math.max(1, Math.round(Math.sqrt(n * aspect)));
     const rows = Math.max(1, Math.ceil(n / cols));
     cols = Math.max(1, Math.ceil(n / rows));
 
-    const cellW = bar.width / cols;
-    const cellH = bar.height / rows;
+    const cellW = rect.width / cols;
+    const cellH = rect.height / rows;
+    const y0 = bottomOf(rect);
 
     let placed = 0;
     for (let r = 0; r < rows && placed < n; r++) {
       for (let c = 0; c < cols && placed < n; c++) {
         const jx = (rng() - 0.5) * jitter * cellW;
         const jy = (rng() - 0.5) * jitter * cellH;
-        const px = bar.x + (c + 0.5) * cellW + jx;
-        const py = (r + 0.5) * cellH + jy; // bottom-anchored (y up from 0)
+        const px = rect.x + (c + 0.5) * cellW + jx;
+        const py = y0 + (r + 0.5) * cellH + jy;
 
         out.targetX[w] = clamp01(px);
         out.targetY[w] = Math.max(0, py);
-        out.colorIdx[w] = bar.colorIdx;
-        out.barId[w] = bar.barId;
+        out.colorIdx[w] = rect.colorIdx;
+        out.barId[w] = rect.barId;
         out.seed[w] = rng();
         w++;
         placed++;

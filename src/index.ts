@@ -37,6 +37,8 @@ export {
   trackPos,
 } from './charts/pie/slider.js';
 export type { ResolvedSlider, SliderTrack } from './charts/pie/slider.js';
+export { drawSlider } from './core/chrome/slider.js';
+export type { SliderRender } from './core/chrome/slider.js';
 export { DEFAULT_MAX_SERIES, DEFAULT_MAX_SLICES } from './charts/pie/types.js';
 export type {
   PieChartConfig,
@@ -196,6 +198,62 @@ export {
   squareRect,
 } from './core/layout/polar.js';
 
+// Candlestick chart (OHLC + live price; rising/falling color rule, series slider)
+export { CandlestickChart } from './charts/candlestick/CandlestickChart.js';
+export { hitCandle, layoutCandles } from './charts/candlestick/layout.js';
+export type {
+  CandleLayout,
+  CandleLayoutOptions,
+  XSlot as CandleXSlot,
+} from './charts/candlestick/layout.js';
+export { resolveDirection } from './charts/candlestick/direction.js';
+export {
+  DEFAULT_FALLING,
+  DEFAULT_RISING,
+  resolveActual,
+  resolveCandleStyle,
+} from './charts/candlestick/candleStyle.js';
+export type {
+  ResolvedActual,
+  ResolvedCandleBorder,
+  ResolvedCandleStyle,
+  ResolvedWick,
+} from './charts/candlestick/candleStyle.js';
+export {
+  DEFAULT_MAX_CANDLES,
+  DEFAULT_MAX_SERIES as DEFAULT_MAX_INSTRUMENTS,
+} from './charts/candlestick/types.js';
+export type {
+  ActualConfig,
+  CandleBody,
+  CandleDirection,
+  CandleDirectionFn,
+  CandleMeta,
+  CandleSpacing,
+  CandleStyleConfig,
+  CandlestickChartConfig,
+  ClickPayload as CandleClickPayload,
+  HoverPayload as CandleHoverPayload,
+  MouseConfig as CandleMouseConfig,
+  SeriesChangePayload as CandleSeriesChangePayload,
+} from './charts/candlestick/types.js';
+
+// OHLC data model (additive sibling of Point/DataSet — see core/data/ohlc.ts)
+export {
+  allCandles,
+  appendCandles,
+  patchCandles,
+  removeCandles,
+  resolveOhlcTypes,
+  validateOhlc,
+} from './core/data/dataset.js';
+export type {
+  Candle,
+  CandlePatch,
+  CandleRef,
+  CandleSeries,
+  OhlcDataSet,
+} from './core/data/ohlc.js';
 // Mesh/scatter data model (additive sibling of Point/DataSet — see core/data/mesh.ts)
 export { meshPoints, resolveMeshTypes, validateMesh } from './core/data/dataset.js';
 export type { MeshDataSet, MeshPoint, MeshSeries, MeshValue } from './core/data/mesh.js';
@@ -258,14 +316,18 @@ export type { GrainBuffer } from './core/particles/grains.js';
 export {
   blobArea,
   blobGrainCounts,
+  boxArea,
+  boxGrainCounts,
   grainCounts,
   lineGrainCounts,
   packBars,
   packBlobs,
+  packBoxes,
   packLine,
 } from './core/particles/pack.js';
 export type {
   BarRect,
+  BoxRect,
   LinePackOptions,
   LineSeg,
   PackOptions,

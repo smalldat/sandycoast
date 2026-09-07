@@ -27,6 +27,7 @@
       <a href="scatter-chart.html">Scatter chart</a>
       <a href="pie-chart.html">Pie chart</a>
       <a href="windrose-chart.html">Wind rose</a>
+      <a href="candlestick-chart.html">Candlestick chart</a>
       <a href="index.html#roadmap" style="opacity:.55">Area chart <span class="pill">soon</span></a>
     </nav>
     <nav class="nav-group">
@@ -67,6 +68,10 @@
       <a class="card" href="windrose-chart.html">
         <h3>Wind rose →</h3>
         <p>Readings bin by direction into compass sectors and stack as petal segments — by intensity band, or one per reading. The latest reading is highlighted, and a time table selects marks both ways.</p>
+      </a>
+      <a class="card" href="candlestick-chart.html">
+        <h3>Candlestick chart →</h3>
+        <p>OHLC bodies pour in as sand and resolve into solid candles; wicks stay solid throughout. Configurable rising/falling color rule, a live-price line, and a slider that morphs between instruments.</p>
       </a>
       <a class="card" href="data-model.html">
         <h3>Data model →</h3>
@@ -145,14 +150,17 @@ git push
     <h2 id="roadmap">Status &amp; roadmap</h2>
     <p>Shipped: data model, scales (linear / time / band), grain packing, WebGPU + Canvas2D backends,
       <strong>BarChart</strong>, <strong>LineChart</strong>, <strong>ScatterChart</strong>,
-      <strong>PieChart</strong> (pie/donut) and <strong>WindRoseChart</strong> with pour-in, morph
+      <strong>PieChart</strong> (pie/donut), <strong>WindRoseChart</strong> and
+      <strong>CandlestickChart</strong> with pour-in, morph
       <code>update()</code>, and hover. Axes,
       positionable legend, current-value readout, per-mark solid fill/border/marker/slice reveal, live
       <code>update</code> / <code>add</code> / <code>remove</code> with smooth tween, a mesh-ready
       per-point <code>z</code> value and swappable point-cloud <code>approximation</code> strategy on the
-      scatter chart, a series-picking slider that morphs slices between series on the pie chart, and —
-      new with the wind rose — a two-indicator data model, a shared time table, latest-value
-      highlighting and overridable pointer hooks.</p>
+      scatter chart, a series-picking slider — shared by the pie and candlestick charts — that morphs
+      between series, and — new with the wind rose — a two-indicator data model, a shared time table,
+      latest-value highlighting and overridable pointer hooks (which the candlestick chart reuses).
+      The candlestick chart adds an OHLC data model, a configurable rising/falling colour rule
+      (including a custom rule function) and a live-price line.</p>
     <p><strong>Planned next:</strong> WebGL2 fallback, an area chart, color-by-value (using the scatter
       chart's <code>z.value</code>), a mesh chart, framework wrappers.</p>
 
