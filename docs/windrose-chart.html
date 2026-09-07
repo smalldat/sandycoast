@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wind rose — @smalldat/sandycoast</title>
+  <meta name="description" content="WindRoseChart API reference: every config property, defaults, methods, events, the time table and overridable mouse hooks." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <span class="dot"></span>
+      <span>@smalldat/sandycoast<small>sand-based charts</small></span>
+    </a>
+    <nav class="nav-group">
+      <h4>Start here</h4>
+      <a href="index.html">Overview</a>
+      <a href="index.html#install">Install &amp; publish</a>
+      <a href="data-model.html">Data model &amp; shared config</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Visuals</h4>
+      <a href="bar-chart.html">Bar chart</a>
+      <a href="line-chart.html">Line chart</a>
+      <a href="scatter-chart.html">Scatter chart</a>
+      <a href="pie-chart.html">Pie chart</a>
+      <a href="windrose-chart.html" class="active">Wind rose</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Project</h4>
+      <a href="license.html">License</a>
+      <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <span class="eyebrow">Visual</span>
+    <h1>Wind rose</h1>
+    <p class="lede">Readings bin by <strong>direction</strong> into compass sectors; sand settles into
+      stacked annular <strong>petal segments</strong>, then a solid fill/border resolves on top. The
+      most recent reading is <strong>highlighted</strong>, and a scrolling <strong>time table</strong>
+      can stand beside the rose — clicking a row selects that reading's mark, and clicking a mark
+      selects its row.</p>
+
+    <div class="note"><strong>Four structural differences from the other charts.</strong>
+      (1) <code>data</code> is a <a href="#data"><code>WindDataSet</code></a> — one dimension (time) and
+      <em>two</em> indicators (direction, intensity), a shape neither <code>Point</code> nor
+      <code>MeshPoint</code> has a slot for. (2) A petal is an <strong>aggregate</strong>: many readings
+      stack into one mark, and <a href="#petals"><code>petals.mode</code></a> decides whether a segment
+      is an intensity band (default) or a single reading. (3) The
+      <a href="#highlight">latest reading(s)</a> are emphasised, composing with hover and dim rather
+      than competing with them. (4) Pointer behavior is
+      <a href="#mouse">overridable through cancellable hooks</a>.</div>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <a href="#construct">Constructor</a>
+      <a href="#data">Data model</a>
+      <a href="#config">Config: top level</a>
+      <a href="#sectors">sectors</a>
+      <a href="#petals">petals</a>
+      <a href="#radial">radial</a>
+      <a href="#bands">bands</a>
+      <a href="#calm">calm</a>
+      <a href="#highlight">highlight</a>
+      <a href="#table">table</a>
+      <a href="#segments">segments</a>
+      <a href="#animation">animation</a>
+      <a href="#mouse">Mouse hooks</a>
+      <a href="#axes">Compass &amp; rings</a>
+      <a href="#methods">Methods</a>
+      <a href="#events">Events</a>
+      <a href="#examples">Examples</a>
+    </div>
+
+    <h2 id="construct">Constructor</h2>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">WindRoseChart</span>(host: HTMLElement, config: WindRoseChartConfig)</code></pre>
+    <p>Mounts a canvas into <code>host</code> and boots the best backend (WebGPU → Canvas2D). Only
+      <code>data</code> is required. Single series — there is no series dimension, no slider, and no
+      legend isolation; the dim machinery drives <a href="#methods">selection</a> instead.</p>
+
+    <h2 id="data">Data model — <code>WindDataSet</code></h2>
+    <p>Additive alongside <code>Point</code>/<code>DataSet</code> and
+      <a href="data-model.html#mesh"><code>MeshPoint</code>/<code>MeshDataSet</code></a>, which are
+      untouched.</p>
+    <pre><code><span class="tok-key">interface</span> <span class="tok-typ">WindPoint</span>&lt;Custom = <span class="tok-typ">unknown</span>&gt; {
+  t: <span class="tok-typ">Date | number</span>;      <span class="tok-com">// the dimension: when the reading was taken</span>
+  direction: <span class="tok-typ">number</span>;    <span class="tok-com">// indicator 1 — the compass direction the wind comes FROM</span>
+  intensity: <span class="tok-typ">number</span>;    <span class="tok-com">// indicator 2 — speed / magnitude</span>
+  custom?: <span class="tok-typ">Custom</span>;       <span class="tok-com">// opaque payload, carried through to events and the table</span>
+}
+
+<span class="tok-key">interface</span> <span class="tok-typ">WindDataSet</span>&lt;Custom = <span class="tok-typ">unknown</span>&gt; {
+  points: <span class="tok-typ">WindPoint</span>&lt;Custom&gt;[];
+  directionUnit?: <span class="tok-str">'deg'</span> | <span class="tok-str">'rad'</span>;   <span class="tok-com">// default 'deg'</span>
+  intensityLabel?: <span class="tok-typ">string</span>;         <span class="tok-com">// table header; default 'Speed'</span>
+  intensityUnit?: <span class="tok-typ">string</span>;          <span class="tok-com">// e.g. 'kt'; labels only</span>
+}</code></pre>
+    <table class="prop-table">
+      <thead><tr><th>Rule</th><th>Behavior</th></tr></thead>
+      <tbody>
+        <tr><td>Direction convention</td><td>The direction the wind comes <strong>from</strong> — the meteorological convention. For "blowing toward", add 180° to your data.</td></tr>
+        <tr><td>Degrees wrap</td><td><code>370</code> and <code>-10</code> are both meaningful headings and normalize into <code>[0, 360)</code>.</td></tr>
+        <tr><td>Radians are checked</td><td>With <code>directionUnit: 'rad'</code>, a value outside <code>[0, 2π]</code> throws a <code>DataError</code> — it is almost always degrees mislabelled, and silently reinterpreting it would rotate the whole rose.</td></tr>
+        <tr><td>Unusable rows are dropped</td><td>A non-finite time/direction/intensity, or a negative intensity, is dropped rather than clamped: a NaN heading has no sector. The count is available from <code>getDroppedCount()</code>.</td></tr>
+        <tr><td>Sorting is the chart's job</td><td>Readings are sorted oldest → newest internally, so "the latest reading" means the same thing whatever order they arrived in.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="config">Config — top level</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>data</code> <span class="pill">required</span></td><td class="type">WindDataSet</td><td class="def">—</td><td>See <a href="#data">above</a>.</td></tr>
+        <tr><td><code>radius</code></td><td class="type">number (0..1)</td><td class="def">0.92</td><td>Outer radius as a fraction of the square rose box's half-extent.</td></tr>
+        <tr><td><code>innerRadius</code></td><td class="type">number (0..0.95)</td><td class="def">0</td><td>Minimum central hole, as a fraction of the outer radius. The <a href="#calm">calm circle</a> may push the petals' root further out.</td></tr>
+        <tr><td><code>north</code></td><td class="type">number (deg)</td><td class="def">0</td><td>Rotation of due north, clockwise. <code>0</code> puts N at 12 o'clock.</td></tr>
+        <tr><td><code>clockwise</code></td><td class="type">boolean</td><td class="def">true</td><td>Run bearings clockwise — the compass convention.</td></tr>
+        <tr><td><code>grainDensity</code></td><td class="type">number</td><td class="def">0.6</td><td>Grain budget multiplier; segments share it by area, so adding readings subdivides the same sand.</td></tr>
+        <tr><td><code>maxGrains</code></td><td class="type">number</td><td class="def">100000</td><td>Hard grain ceiling.</td></tr>
+        <tr><td><code>colors</code></td><td class="type">string[]</td><td class="def">DEFAULT_PALETTE</td><td>Cycled per <strong>band</strong> in <code>'bands'</code> mode; read as sequential <strong>ramp stops</strong> over the intensity range in <code>'observations'</code> mode.</td></tr>
+        <tr><td><code>background</code></td><td class="type">string</td><td class="def">transparent</td><td>Canvas clear color.</td></tr>
+        <tr><td><code>grain</code></td><td class="type">object</td><td class="def">—</td><td><code>sizePx</code> (3), <code>shape</code> (<code>'disc'</code>), <code>jitter</code> (0.6), <code>settleJitter</code> (0.004). <a href="bar-chart.html#grain">Same as bar chart</a>.</td></tr>
+        <tr><td><code>sectors</code></td><td class="type">SectorConfig</td><td class="def">—</td><td>Direction binning. <a href="#sectors">See below</a>.</td></tr>
+        <tr><td><code>petals</code></td><td class="type">PetalConfig</td><td class="def">—</td><td>How a petal splits into segments. <a href="#petals">See below</a>.</td></tr>
+        <tr><td><code>radial</code></td><td class="type">RadialConfig</td><td class="def">—</td><td>What a petal's length measures. <a href="#radial">See below</a>.</td></tr>
+        <tr><td><code>bands</code></td><td class="type">BandsConfig</td><td class="def">—</td><td>Intensity bands. <a href="#bands">See below</a>.</td></tr>
+        <tr><td><code>calm</code></td><td class="type">CalmConfig</td><td class="def">—</td><td>Central calm circle. <a href="#calm">See below</a>.</td></tr>
+        <tr><td><code>highlight</code></td><td class="type">HighlightConfig</td><td class="def">on</td><td>Latest-value emphasis. <a href="#highlight">See below</a>.</td></tr>
+        <tr><td><code>table</code></td><td class="type">WindRoseTableConfig</td><td class="def">off</td><td>The time table. <a href="#table">See below</a>.</td></tr>
+        <tr><td><code>segments</code></td><td class="type">RoseStyleConfig</td><td class="def">off</td><td>Solid fill/border per segment. <a href="#segments">See below</a>.</td></tr>
+        <tr><td><code>animation</code></td><td class="type">object</td><td class="def">—</td><td>Timing. <a href="#animation">See below</a>.</td></tr>
+        <tr><td><code>interaction</code></td><td class="type">object</td><td class="def">—</td><td><code>hover</code> and <code>dim</code> as <a href="bar-chart.html#interaction">on the bar chart</a>, plus <a href="#mouse"><code>mouse</code></a> hooks.</td></tr>
+        <tr><td><code>axes</code></td><td class="type">{ x?, y? }</td><td class="def">off</td><td>Re-mapped to polar. <a href="#axes">See below</a>.</td></tr>
+        <tr><td><code>legend</code></td><td class="type">LegendConfig</td><td class="def">off</td><td>Names the bands. Only meaningful in <code>'bands'</code> mode — see the note in <a href="#petals">petals</a>.</td></tr>
+        <tr><td><code>title</code></td><td class="type">TitleConfig</td><td class="def">off</td><td>Chart title; shares the legend's placement vocabulary.</td></tr>
+        <tr><td><code>currentValue</code></td><td class="type">object</td><td class="def">off</td><td><a href="bar-chart.html#currentvalue">Same as bar chart</a>; <code>format</code> receives a <a href="#events"><code>SegmentMeta</code></a>.</td></tr>
+        <tr><td><code>fps</code></td><td class="type">FpsConfig</td><td class="def">off</td><td><a href="bar-chart.html#fps">Same as bar chart</a>.</td></tr>
+        <tr><td><code>backend</code></td><td class="type">'auto' | 'webgpu' | 'canvas2d'</td><td class="def">'auto'</td><td>Force a rendering backend.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="sectors"><code>sectors</code> — direction binning</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>count</code></td><td class="type">number (≥ 2)</td><td class="def">16</td><td>Sectors around the compass.</td></tr>
+        <tr><td><code>align</code></td><td class="type">'centered' | 'edge'</td><td class="def">'centered'</td><td><code>'centered'</code> centers a sector on its compass point, so N spans −11.25°..+11.25° at 16 sectors — the classic rose. <code>'edge'</code> starts sector 0 at due north.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">Bins are half-open <code>[lo, hi)</code>, so a heading landing exactly on a boundary
+      belongs to exactly one sector, and a heading just shy of a full turn wraps into the north bin
+      rather than falling off the end.</div>
+
+    <h2 id="petals"><code>petals</code> — what a segment is</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>mode</code></td><td class="type">'bands' | 'observations'</td><td class="def">'bands'</td><td><code>'bands'</code> segments by intensity band — the classic meteorological rose. <code>'observations'</code> gives every reading its own segment.</td></tr>
+        <tr><td><code>order</code></td><td class="type">'intensity' | 'time'</td><td class="def">'intensity'</td><td>Inner → outer ordering in <code>'observations'</code> mode.</td></tr>
+        <tr><td><code>maxSegmentsPerSector</code></td><td class="type">number</td><td class="def">120</td><td>Cap per sector; the outermost tail beyond it merges into one aggregated segment.</td></tr>
+        <tr><td><code>width</code></td><td class="type">number (0..1)</td><td class="def">0.9</td><td>Petal sweep as a fraction of its sector. <code>1</code> gives touching petals.</td></tr>
+        <tr><td><code>padAngle</code></td><td class="type">number (deg)</td><td class="def">0</td><td>Gap trimmed from each petal's sweep.</td></tr>
+        <tr><td><code>rampSteps</code></td><td class="type">number</td><td class="def">16</td><td>Steps the intensity ramp is quantized to for <em>grain</em> coloring in <code>'observations'</code> mode.</td></tr>
+      </tbody>
+    </table>
+    <div class="note warn"><strong>What the default mode costs you.</strong> In <code>'bands'</code> mode
+      the smallest addressable mark is a band, so a table-row click highlights the band
+      <em>containing</em> that reading, and the latest-value highlight lands on the band holding the
+      newest one. Exact one-row-one-mark selection is what <code>petals.mode: 'observations'</code>
+      buys. Both behaviors are real; the readout and the table's selected-row styling say which is in
+      play.</div>
+    <div class="note"><strong>The cap merges, it does not drop.</strong> Unlike the pie's
+      <code>maxSlices</code>, exceeding <code>maxSegmentsPerSector</code> folds the tail into one
+      aggregated segment rather than discarding readings — dropping them would shorten the petal and
+      misstate how often the wind blew that way. Aggregated segments report
+      <code>aggregated: true</code> and say so in the readout.</div>
+    <div class="note"><strong>Legend.</strong> In <code>'observations'</code> mode the colors are a
+      continuous ramp with nothing discrete to name, so <code>legend.show</code> is ignored rather than
+      mislabelled. The radial axis and the readout carry the intensity story there.</div>
+    <div class="note"><strong>Why <code>rampSteps</code> exists.</strong> Grains are batched once per
+      palette entry, so an unquantized per-segment palette would cost a full pass over every grain for
+      every segment. The solid overlay always uses the exact ramp color; only the sand is quantized.</div>
+
+    <h2 id="radial"><code>radial</code> — what a petal's length measures</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>measure</code></td><td class="type">'count' | 'percent' | 'intensitySum' | 'intensityMax'</td><td class="def">'count'</td><td>See the table below.</td></tr>
+        <tr><td><code>max</code></td><td class="type">number</td><td class="def">largest petal</td><td>Explicit axis maximum, in the measure's units — use it to hold the scale steady while data streams.</td></tr>
+        <tr><td><code>labelAngle</code></td><td class="type">number (deg)</td><td class="def">half a sector</td><td>Spoke the ring labels are drawn along. The default falls in the gap <em>between</em> two sectors, so labels clear both the petals and the rim labels.</td></tr>
+      </tbody>
+    </table>
+    <table class="prop-table">
+      <thead><tr><th>measure</th><th>Petal length</th></tr></thead>
+      <tbody>
+        <tr><td><code>'count'</code></td><td>How many readings came from that direction — the classic frequency rose.</td></tr>
+        <tr><td><code>'percent'</code></td><td>The same, as a share of every reading (calm included), labelled <code>%</code>.</td></tr>
+        <tr><td><code>'intensitySum'</code></td><td>Summed intensity — where the <em>energy</em> came from, not where the wind most often came from.</td></tr>
+        <tr><td><code>'intensityMax'</code></td><td>The strongest reading from that direction. Segments still subdivide the petal so each stays addressable, but a segment's own <em>length</em> carries no independent meaning in this mode.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="bands"><code>bands</code> — intensity bands</h2>
+    <p>Used by <code>petals.mode: 'bands'</code>.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>thresholds</code></td><td class="type">number[]</td><td class="def">—</td><td>Explicit interior thresholds, ascending. Overrides <code>derive</code>/<code>count</code>. Band 0 is <code>(-∞, t₀)</code>, the last is <code>[tₙ, ∞)</code>.</td></tr>
+        <tr><td><code>derive</code></td><td class="type">'equal' | 'quantile'</td><td class="def">'equal'</td><td>How thresholds are derived when none are given.</td></tr>
+        <tr><td><code>count</code></td><td class="type">number</td><td class="def">4</td><td>How many bands to derive.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">Derived edges that could only ever produce an empty band are dropped (quantiles do
+      this whenever the data ties heavily), because an empty band still claims a legend entry and a
+      color. <strong>Explicit</strong> <code>thresholds</code> are left exactly as given — there, an
+      empty band is the caller's deliberate scale.</div>
+
+    <h2 id="calm"><code>calm</code> — the central circle</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>below</code></td><td class="type">number</td><td class="def">0</td><td>Readings with intensity strictly below this are "calm". <code>0</code> means nothing is.</td></tr>
+        <tr><td><code>show</code></td><td class="type">boolean</td><td class="def">true</td><td>Draw the calm circle when any reading is calm.</td></tr>
+        <tr><td><code>color</code></td><td class="type">string</td><td class="def">first palette entry</td><td>Fill color. Worth setting: the default is also band 0's color, so a distinct one tells the calm disc apart from the weakest band.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">A calm reading has no meaningful direction, so it belongs in the middle rather than
+      in whichever sector the vane happened to be pointing at. The circle sits on the same radial scale
+      as the petals — which grow from its edge — but is capped at half the radial span, so an
+      overwhelmingly calm dataset cannot swallow the rose it sits inside.</div>
+
+    <h2 id="highlight"><code>highlight</code> — the latest reading(s)</h2>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>show</code></td><td class="type">boolean</td><td class="def">true</td><td>Emphasise the latest reading(s).</td></tr>
+        <tr><td><code>select</code></td><td class="type">'latest' | 'latestN' | 'latestTimestamp'</td><td class="def">'latest'</td><td>The single newest reading; the newest <code>count</code>; or every reading sharing the newest timestamp.</td></tr>
+        <tr><td><code>count</code></td><td class="type">number</td><td class="def">3</td><td>How many, when <code>select</code> is <code>'latestN'</code>.</td></tr>
+        <tr><td><code>ramp</code></td><td class="type">boolean</td><td class="def">true when count &gt; 1</td><td>Fade emphasis by recency so the newest reads strongest and the trail fades.</td></tr>
+        <tr><td><code>mode</code></td><td class="type">'glow' | 'outline' | 'color'</td><td class="def">'glow'</td><td><code>'glow'</code> brightens the segment and its grains; <code>'outline'</code> strokes it; <code>'color'</code> repaints it.</td></tr>
+        <tr><td><code>color</code></td><td class="type">string</td><td class="def">segment color</td><td>Stroke/fill color for <code>'outline'</code> and <code>'color'</code>.</td></tr>
+        <tr><td><code>gain</code></td><td class="type">number</td><td class="def">1.8</td><td>Brightness gain when <code>'glow'</code>.</td></tr>
+        <tr><td><code>outlinePx</code></td><td class="type">number</td><td class="def">2</td><td>Stroke width when <code>'outline'</code>.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">The highlight rides the same per-segment weight machinery as hover and dim, so the
+      three <strong>compose</strong>: the newest petal stays lit while the pointer is elsewhere, and
+      hovering it reads as brighter still rather than as a competing effect.</div>
+
+    <h2 id="table"><code>table</code> — the time table</h2>
+    <p>A scrolling list of readings, newest first, mounted on an edge exactly like the legend. Off by
+      default. Placement comes from the shared <code>TableConfig</code> in <code>core/chrome</code>
+      (the table itself is chart-agnostic); the wind rose adds how its columns are formatted.</p>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>show</code></td><td class="type">boolean</td><td class="def">false</td><td>Mount the table.</td></tr>
+        <tr><td><code>position</code></td><td class="type">'left' | 'right' | 'top' | 'bottom'</td><td class="def">'right'</td><td>Edge to mount it on.</td></tr>
+        <tr><td><code>align</code></td><td class="type">'start' | 'center' | 'end'</td><td class="def">'center'</td><td>Cross-axis alignment, matching the legend's.</td></tr>
+        <tr><td><code>maxRows</code></td><td class="type">number</td><td class="def">500</td><td>Rows kept in the DOM, so a long stream cannot grow it without bound.</td></tr>
+        <tr><td><code>interactive</code></td><td class="type">boolean</td><td class="def">true</td><td>Click a row to select that reading.</td></tr>
+        <tr><td><code>stickyHeader</code></td><td class="type">boolean</td><td class="def">true</td><td>Keep the header visible while the body scrolls.</td></tr>
+        <tr><td><code>followSelection</code></td><td class="type">boolean</td><td class="def">true</td><td>Scroll the selected row into view when the selection changes.</td></tr>
+        <tr><td><code>maxHeight</code> / <code>maxWidth</code></td><td class="type">string</td><td class="def">'100%' / '220px'</td><td>CSS lengths bounding the layer on its edge.</td></tr>
+        <tr><td><code>fontPx</code> / <code>fontFamily</code> / <code>color</code></td><td class="type">number / string / string</td><td class="def">11 / system-ui / subdued</td><td>Text styling.</td></tr>
+        <tr><td><code>timeFormat</code></td><td class="type">(t: Date) =&gt; string</td><td class="def">clock, or date+clock</td><td>The default widens to include a date only when the readings actually span more than a day.</td></tr>
+        <tr><td><code>directionFormat</code></td><td class="type">(deg: number) =&gt; string</td><td class="def">compass bearing</td><td>Default prints <code>N</code>/<code>NNE</code>/… — what a reader parses, and what the rim labels say. Pass <code>(d) =&gt; `${Math.round(d)}°`</code> for raw degrees.</td></tr>
+        <tr><td><code>customColumn</code></td><td class="type">{ label, format }</td><td class="def">—</td><td>Opt-in fourth column fed from <code>WindPoint.custom</code>; omitted entirely when unset.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">A table, a legend and a title on the <strong>same</strong> edge stack rather than
+      overlap: each layer is told how far in the previous one already pushed, and the plot is inset by
+      the total.</div>
+
+    <h2 id="segments"><code>segments</code> — the solid layer</h2>
+    <p>Mirrors the pie's <code>slices</code> block: <code>fill.opacity</code> (1),
+      <code>border.show</code> (true when a <code>border</code> block is present), <code>border.width</code>
+      (1), <code>border.opacity</code> (1), and <code>reveal</code> — the same particle→solid crossfade
+      every visual shares (<code>start</code>, <code>duration</code>, <code>ease</code>,
+      <code>grainsTo</code>). Off by default; a config without <code>segments</code> renders as pure
+      sand.</p>
+
+    <h2 id="animation"><code>animation</code></h2>
+    <div class="note warn"><strong>Units:</strong> <code>duration</code>, <code>stagger</code> and
+      <code>morphDuration</code> are in <strong>milliseconds</strong>.</div>
+    <table class="prop-table">
+      <thead><tr><th>Property</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>duration</code></td><td class="type">number (ms)</td><td class="def">900</td><td>Per-grain travel time.</td></tr>
+        <tr><td><code>stagger</code></td><td class="type">number (ms)</td><td class="def">500</td><td>Spread of pour start times.</td></tr>
+        <tr><td><code>ease</code></td><td class="type">'linear' | 'easeOutCubic' | 'easeOutQuint'</td><td class="def">'easeOutCubic'</td><td>Grain travel easing.</td></tr>
+        <tr><td><code>morphDuration</code></td><td class="type">number (ms)</td><td class="def">duration + stagger</td><td>Transition window for live changes.</td></tr>
+        <tr><td><code>reflow</code></td><td class="type">'translate' | 'reshuffle' | 'withPetal'</td><td class="def">'translate'</td><td>How an <em>existing</em> segment's grains move. <code>withPetal</code> locks them rigidly to the wedge — no delay, no fade flash.</td></tr>
+        <tr><td><code>morphGrains</code></td><td class="type">boolean</td><td class="def">true</td><td><code>false</code> snaps grains to their new positions so <strong>only the solid layer tweens</strong>.</td></tr>
+        <tr><td><code>enter</code></td><td class="type">'grow' | 'pour' | 'rise'</td><td class="def">'grow'</td><td>How a <em>new</em> segment appears. <code>'grow'</code> opens it at the petal's rim — the streaming case, where a new reading extends the petal it joins rather than arriving from elsewhere.</td></tr>
+        <tr><td><code>exit</code></td><td class="type">'shrink' | 'fall' | 'vanish'</td><td class="def">'shrink'</td><td>How a <em>removed</em> segment leaves.</td></tr>
+      </tbody>
+    </table>
+    <div class="note"><strong>Segment identity</strong> is <code>sector + segment key</code> — the
+      reading's id in <code>'observations'</code> mode, the band index in <code>'bands'</code> mode. So
+      appending a reading <em>grows</em> the petal it belongs to instead of re-pouring the rose, and
+      changing <code>radial.measure</code> sweeps every petal to its new length. Changing
+      <code>sectors</code> or <code>petals.mode</code> invalidates every key and re-pours — honestly,
+      because the marks genuinely are different marks.</div>
+
+    <h2 id="mouse">Overridable mouse behavior</h2>
+    <p>The chart's built-in pointer behavior is handed to you as <code>defaultAction()</code>, so a hook
+      can run it, run it late, or not at all — overriding behavior without forking the chart.</p>
+    <pre><code><span class="tok-key">interface</span> <span class="tok-typ">MouseHookContext</span>&lt;M, E&gt; {
+  meta: <span class="tok-typ">M | null</span>;              <span class="tok-com">// the mark under the pointer, null for background</span>
+  native: <span class="tok-typ">E</span>;                  <span class="tok-com">// the raw DOM event — modifiers, coordinates, preventDefault</span>
+  px: { x: <span class="tok-typ">number</span>; y: <span class="tok-typ">number</span> };  <span class="tok-com">// pointer in CSS px, relative to the chart element</span>
+  <span class="tok-fn">defaultAction</span>(): <span class="tok-typ">void</span>;      <span class="tok-com">// the built-in behavior; idempotent</span>
+}
+
+<span class="tok-key">type</span> <span class="tok-typ">MouseHook</span>&lt;M, E&gt; = (ctx: <span class="tok-typ">MouseHookContext</span>&lt;M, E&gt;) => <span class="tok-typ">boolean | void</span>;</code></pre>
+    <table class="prop-table">
+      <thead><tr><th><code>interaction.mouse</code></th><th>Mark type</th><th>Built-in behavior</th></tr></thead>
+      <tbody>
+        <tr><td><code>onPetalHover</code></td><td class="type">SegmentMeta</td><td>Highlight the hovered segment.</td></tr>
+        <tr><td><code>onPetalClick</code></td><td class="type">SegmentMeta</td><td>Select it (clicking the selected one again clears).</td></tr>
+        <tr><td><code>onPetalDblClick</code></td><td class="type">SegmentMeta</td><td>Clear the selection.</td></tr>
+        <tr><td><code>onBackgroundClick</code></td><td class="type">null</td><td>Clear the selection.</td></tr>
+        <tr><td><code>onTableRowClick</code></td><td class="type">ObservationMeta</td><td>Select that reading.</td></tr>
+      </tbody>
+    </table>
+    <table class="prop-table">
+      <thead><tr><th>Return</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>false</code></td><td>Suppress the built-in behavior.</td></tr>
+        <tr><td><code>true</code> / nothing</td><td>Run it after the hook — unless the hook already called <code>defaultAction()</code>, which latches so it can never run twice.</td></tr>
+      </tbody>
+    </table>
+    <div class="note"><strong>Events still fire.</strong> <code>hover</code> and <code>select</code> are
+      emitted whether or not a hook cancelled the default: an observer is not an override, and a caller
+      who suppresses the built-in selection should still get to hear about the click.</div>
+
+    <h2 id="axes">Compass &amp; rings — <code>axes</code></h2>
+    <p>The shared <code>AxisConfig</code> blocks, re-mapped to polar meanings, so one mental model
+      covers every chart.</p>
+    <table class="prop-table">
+      <thead><tr><th>Block</th><th>Draws</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>axes.x</code></td><td>Compass labels around the rim.</td><td><code>ticks</code> thins them by a stride so the survivors stay evenly spaced (16 sectors with <code>ticks: 4</code> labels N/E/S/W). <code>tickFormat</code> receives the sector's centre bearing in degrees. Consecutive duplicate labels are dropped — past 16 sectors two neighbours round to the same compass point.</td></tr>
+        <tr><td><code>axes.y</code></td><td>Concentric rings and their values.</td><td><code>ticks</code> is the approximate ring count; <code>tickFormat</code> receives the measure value. Rings start at the petals' <em>root</em>, not the disc centre — with a calm circle in the middle, a ring at radius 0 would claim the calm disc's edge is zero when the scale actually starts there.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="methods">Methods</h2>
+    <table class="prop-table">
+      <thead><tr><th>Method</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>whenReady(): Promise&lt;void&gt;</code></td><td>Resolves once the backend is initialized and the first frame is scheduled.</td></tr>
+        <tr><td><code>get backend</code></td><td><code>'webgpu' | 'canvas2d' | null</code>.</td></tr>
+        <tr><td><code>on('hover' | 'select' | 'highlight', fn)</code></td><td>Subscribe; returns an unsubscribe function. See <a href="#events">Events</a>.</td></tr>
+        <tr><td><code>selectObservation(id | null)</code></td><td>Select the mark holding that reading — the same code path a table-row click and a petal click take, so a scripted selection and a clicked one are indistinguishable downstream.</td></tr>
+        <tr><td><code>selectSegment(key | null)</code></td><td>Select a segment by its stable key.</td></tr>
+        <tr><td><code>getSelected()</code></td><td><code>{ segmentKey: string | null; observationId: number | null }</code>.</td></tr>
+        <tr><td><code>getHighlighted()</code></td><td><code>ObservationMeta[]</code> — what the latest-value highlight currently resolves to.</td></tr>
+        <tr><td><code>getSegments()</code></td><td><code>SegmentMeta[]</code> — every drawn segment, in draw order.</td></tr>
+        <tr><td><code>getDroppedCount()</code></td><td>How many source rows were dropped as unusable.</td></tr>
+        <tr><td><code>setData(data)</code></td><td>Replace the whole <code>WindDataSet</code>; segments morph (no re-pour).</td></tr>
+        <tr><td><code>add(points)</code></td><td>Append readings — the streaming case; petals grow to take them per <code>animation.enter</code>.</td></tr>
+        <tr><td><code>remove(indices)</code></td><td>Drop readings by source index (negative counts from the end).</td></tr>
+        <tr><td><code>repour()</code></td><td>Re-run the pour-in animation with the current data.</td></tr>
+        <tr><td><code>getData(): WindDataSet</code></td><td>The current dataset.</td></tr>
+        <tr><td><code>dispose()</code></td><td>Cancel the loop, remove listeners, free the backend and DOM.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="events">Events</h2>
+    <pre><code><span class="tok-com">// SegmentMeta — one drawn segment (hover, select, currentValue.format)</span>
+{
+  segmentId: <span class="tok-typ">number</span>;      <span class="tok-com">// grain barId slot</span>
+  key: <span class="tok-typ">string</span>;            <span class="tok-com">// stable identity: morph, selection and table key</span>
+  sector: <span class="tok-typ">number</span>;         <span class="tok-com">// -1 for the calm circle</span>
+  bearingDeg: <span class="tok-typ">number</span>;     bearing: <span class="tok-typ">string</span>;   <span class="tok-com">// 315, 'NW'</span>
+  band: <span class="tok-typ">number</span>;           <span class="tok-com">// -1 in 'observations' mode</span>
+  bandLo: <span class="tok-typ">number</span>;         bandHi: <span class="tok-typ">number</span>;
+  aggregated: <span class="tok-typ">boolean</span>;    <span class="tok-com">// the merged tail of a capped sector</span>
+  calm: <span class="tok-typ">boolean</span>;
+  observationIds: <span class="tok-typ">number[]</span>;   <span class="tok-com">// source WindPoint indices</span>
+  count: <span class="tok-typ">number</span>;
+  value: <span class="tok-typ">number</span>;          petalValue: <span class="tok-typ">number</span>;   <span class="tok-com">// in the measure's units</span>
+  intensityMin: <span class="tok-typ">number</span>;   intensityMax: <span class="tok-typ">number</span>;
+  latestT: <span class="tok-typ">number</span>;        <span class="tok-com">// newest member's time, epoch ms</span>
+  a0: <span class="tok-typ">number</span>; a1: <span class="tok-typ">number</span>; rInner: <span class="tok-typ">number</span>; rOuter: <span class="tok-typ">number</span>;
+  color: <span class="tok-typ">RGBA</span>;
+}
+
+<span class="tok-com">// ObservationMeta — one reading (table rows, highlight, onTableRowClick)</span>
+{
+  id: <span class="tok-typ">number</span>;             <span class="tok-com">// index into data.points</span>
+  t: <span class="tok-typ">number</span>;              directionDeg: <span class="tok-typ">number</span>;   bearing: <span class="tok-typ">string</span>;
+  intensity: <span class="tok-typ">number</span>;      custom: <span class="tok-typ">Custom | undefined</span>;
+  segmentKey: <span class="tok-typ">string | null</span>;
+}</code></pre>
+    <table class="prop-table">
+      <thead><tr><th>Event</th><th>Payload</th></tr></thead>
+      <tbody>
+        <tr><td><code>hover</code></td><td><code>{ segment: SegmentMeta | null }</code></td></tr>
+        <tr><td><code>select</code></td><td><code>{ segmentKey, observationId, segment }</code> — fires for petal clicks, table-row clicks and <code>selectObservation()</code>/<code>selectSegment()</code> alike.</td></tr>
+        <tr><td><code>highlight</code></td><td><code>{ observations: ObservationMeta[] }</code> — fires whenever the data changes, because "latest" moves with the data rather than with the pointer.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="examples">Examples</h2>
+
+    <h3>Classic frequency rose</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">WindRoseChart</span>(el, {
+  data: { points, intensityUnit: <span class="tok-str">'kt'</span> },
+  sectors: { count: <span class="tok-num">16</span> },
+  bands: { derive: <span class="tok-str">'equal'</span>, count: <span class="tok-num">4</span> },
+  calm: { below: <span class="tok-num">1</span>, color: <span class="tok-str">'#5b6472'</span> },
+  segments: { fill: { opacity: <span class="tok-num">0.9</span> }, border: { show: <span class="tok-key">true</span> } },
+  axes: { x: { show: <span class="tok-key">true</span>, ticks: <span class="tok-num">8</span> }, y: { show: <span class="tok-key">true</span>, ticks: <span class="tok-num">4</span> } },
+  legend: { show: <span class="tok-key">true</span> },
+});</code></pre>
+
+    <h3>Per-reading petals with a time table</h3>
+    <pre><code><span class="tok-key">const</span> chart = <span class="tok-key">new</span> <span class="tok-fn">WindRoseChart</span>(el, {
+  data: { points, intensityUnit: <span class="tok-str">'kt'</span> },
+  petals: { mode: <span class="tok-str">'observations'</span> },   <span class="tok-com">// every reading is its own addressable mark</span>
+  colors: [<span class="tok-str">'#1d3b53'</span>, <span class="tok-str">'#2f7fa8'</span>, <span class="tok-str">'#5ac8c8'</span>, <span class="tok-str">'#e8c45a'</span>],   <span class="tok-com">// read as ramp stops</span>
+  highlight: { select: <span class="tok-str">'latestN'</span>, count: <span class="tok-num">3</span>, mode: <span class="tok-str">'outline'</span>, color: <span class="tok-str">'#fff'</span> },
+  table: { show: <span class="tok-key">true</span>, position: <span class="tok-str">'right'</span>, maxRows: <span class="tok-num">200</span> },
+});
+
+<span class="tok-com">// Clicking a table row selects that exact reading's mark, and vice versa.</span>
+chart.<span class="tok-fn">on</span>(<span class="tok-str">'select'</span>, ({ observationId }) => <span class="tok-fn">console</span>.log(observationId));</code></pre>
+
+    <h3>Streaming readings</h3>
+    <pre><code><span class="tok-key">const</span> chart = <span class="tok-key">new</span> <span class="tok-fn">WindRoseChart</span>(el, {
+  data: { points: [], intensityUnit: <span class="tok-str">'kt'</span> },
+  animation: { enter: <span class="tok-str">'grow'</span> },        <span class="tok-com">// the petal grows to take the new reading</span>
+  radial: { measure: <span class="tok-str">'percent'</span>, max: <span class="tok-num">30</span> },  <span class="tok-com">// hold the scale steady while it streams</span>
+});
+
+<span class="tok-fn">setInterval</span>(() => {
+  chart.<span class="tok-fn">add</span>([{ t: <span class="tok-key">new</span> Date(), direction: <span class="tok-fn">heading</span>(), intensity: <span class="tok-fn">speed</span>() }]);
+  <span class="tok-key">if</span> (chart.<span class="tok-fn">getData</span>().points.length &gt; <span class="tok-num">500</span>) chart.<span class="tok-fn">remove</span>([<span class="tok-num">0</span>]);
+}, <span class="tok-num">1000</span>);</code></pre>
+
+    <h3>Overriding a click</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">WindRoseChart</span>(el, {
+  data,
+  interaction: {
+    mouse: {
+      <span class="tok-fn">onPetalClick</span>(ctx) {
+        <span class="tok-key">if</span> (ctx.native.shiftKey) {
+          <span class="tok-fn">openInspector</span>(ctx.meta);
+          <span class="tok-key">return</span> <span class="tok-key">false</span>;         <span class="tok-com">// suppress the built-in selection</span>
+        }
+        ctx.<span class="tok-fn">defaultAction</span>();      <span class="tok-com">// otherwise select as usual</span>
+      },
+    },
+  },
+});</code></pre>
+
+    <h3>Raw degrees in the table, plus a custom column</h3>
+    <pre><code><span class="tok-key">new</span> <span class="tok-fn">WindRoseChart</span>&lt;{ station: <span class="tok-typ">string</span> }&gt;(el, {
+  data: { points },   <span class="tok-com">// points carry custom: { station: 'stn-07' }</span>
+  table: {
+    show: <span class="tok-key">true</span>,
+    <span class="tok-fn">directionFormat</span>: (deg) => <span class="tok-str">`</span>${<span class="tok-fn">Math.round</span>(deg)}°<span class="tok-str">`</span>,
+    customColumn: { label: <span class="tok-str">'Station'</span>, format: (c) => (c <span class="tok-key">as</span> <span class="tok-key">any</span>).station },
+  },
+});</code></pre>
+
+    <div class="foot">
+      <p>© <span id="yr">2026</span> · <a href="license.html">License</a> ·
+        <a href="data-model.html">Data model →</a></p>
+    </div>
+  </main>
+</div>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
+</body>
+</html>

@@ -46,6 +46,20 @@ export interface FrameUniforms {
    * {@link hoverOpacity}.
    */
   dimOpacity: number;
+  /**
+   * Per-bar emphasis weight in [0,1] (index = barId): **brightness only** — no
+   * jitter, no opacity change.
+   *
+   * Separate from {@link hoverWeights} because that channel also drives
+   * {@link hoverJitterAmp}, and a *persistent* emphasis (the wind rose's
+   * latest-reading glow) would then shimmer forever. Hover is transient, so its
+   * shimmer reads as a cursor; a permanent one just reads as noise. The two
+   * compose: gains add, so hovering an emphasised mark is brighter still.
+   * Omitted (or an empty array) = no effect.
+   */
+  emphasisWeights?: Float32Array;
+  /** Color multiplier for a fully-emphasised grain. Default `1` (no effect). */
+  emphasisGain?: number;
   /** Baseline settle jitter amplitude (layout units). */
   settleJitterAmp: number;
   /** Background clear color. */

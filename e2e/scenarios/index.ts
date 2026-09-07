@@ -4,6 +4,8 @@ import { lineBasic } from './line-basic.scenario.js';
 import { lineStack } from './line-stack.scenario.js';
 import { pieBasic } from './pie-basic.scenario.js';
 import type { Scenario } from './types.js';
+import { windroseBasic } from './windrose-basic.scenario.js';
+import { windroseTable } from './windrose-table.scenario.js';
 
 /** Every scenario, keyed by id. Adding a chart = adding one file here. */
 export const SCENARIOS: Record<string, Scenario> = {
@@ -12,6 +14,8 @@ export const SCENARIOS: Record<string, Scenario> = {
   [lineBasic.id]: lineBasic,
   [lineStack.id]: lineStack,
   [pieBasic.id]: pieBasic,
+  [windroseBasic.id]: windroseBasic,
+  [windroseTable.id]: windroseTable,
 };
 
 export const SCENARIO_LIST: Scenario[] = Object.values(SCENARIOS);

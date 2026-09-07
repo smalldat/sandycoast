@@ -53,6 +53,9 @@ export type { ResolvedFps } from './core/chrome/fps.js';
 export { Legend } from './core/chrome/legend.js';
 export type { LegendEntry } from './core/chrome/legend.js';
 export { Title } from './core/chrome/title.js';
+export { Table, resolveTable } from './core/chrome/table.js';
+export type { ResolvedTable, TableRow } from './core/chrome/table.js';
+export type { TableConfig } from './core/chrome/types.js';
 export {
   axisMargins,
   marginsToPlotRect,
@@ -108,6 +111,90 @@ export type {
   ScatterChartConfig,
   ScatterMeta,
 } from './charts/scatter/types.js';
+
+// Wind rose (two indicators over one time dimension; petals aggregate readings)
+export { WindRoseChart } from './charts/windrose/WindRoseChart.js';
+export { hitSegment, layoutWindRose } from './charts/windrose/layout.js';
+export type { WindRoseLayout, WindRoseLayoutOptions } from './charts/windrose/layout.js';
+export {
+  bandEdges,
+  bandOf,
+  bandRanges,
+  binDirections,
+  sectorBounds,
+  sectorOf,
+  segmentKeyByObservation,
+  stacks,
+} from './charts/windrose/binning.js';
+export type {
+  BandConfig,
+  Bin,
+  PetalMode,
+  RadialMeasure,
+  SectorAlign,
+  Segment,
+  SegmentOrder,
+} from './charts/windrose/binning.js';
+export { buildRoseAxes, compassTicks, niceStep, radialRings } from './charts/windrose/axis.js';
+export type { CompassTick, RadialRing, RoseAxes } from './charts/windrose/axis.js';
+export { COMPASS_16, bearingLabel, degreesFromRadians } from './charts/windrose/compass.js';
+export {
+  highlightTargets,
+  resolveHighlight,
+  resolveRoseStyle,
+} from './charts/windrose/roseStyle.js';
+export type {
+  HighlightTarget,
+  ResolvedHighlight,
+  ResolvedRoseStyle,
+  ResolvedSegmentBorder,
+} from './charts/windrose/roseStyle.js';
+export {
+  DEFAULT_MAX_SEGMENTS,
+  DEFAULT_RAMP_STEPS,
+  DEFAULT_SECTORS,
+} from './charts/windrose/types.js';
+export type {
+  BandsConfig,
+  CalmConfig,
+  HighlightConfig,
+  HighlightPayload,
+  MouseConfig,
+  ObservationMeta,
+  PetalConfig,
+  RadialConfig,
+  RoseStyleConfig,
+  SectorConfig,
+  SegmentMeta,
+  SelectPayload,
+  HoverPayload as WindRoseHoverPayload,
+  WindRoseChartConfig,
+  WindRoseTableConfig,
+} from './charts/windrose/types.js';
+
+// Wind data model (additive sibling of Point/DataSet — see core/data/wind.ts)
+export { normalizeWind, validateWind } from './core/data/dataset.js';
+export type {
+  NormalizedWind,
+  WindDataSet,
+  WindObservation,
+  WindPoint,
+} from './core/data/wind.js';
+
+// Overridable pointer behavior, shared across visuals
+export { runMouseHook } from './core/interaction/mouse.js';
+export type { MouseHook, MouseHookContext, MouseHookResult } from './core/interaction/mouse.js';
+
+// Shared polar layout helpers (disc-shaped visuals: pie/donut, wind rose)
+export {
+  CENTER,
+  MAX_RADIUS,
+  angleInWedge,
+  layoutToAngle,
+  normalizeAngle,
+  polarToLayout,
+  squareRect,
+} from './core/layout/polar.js';
 
 // Mesh/scatter data model (additive sibling of Point/DataSet — see core/data/mesh.ts)
 export { meshPoints, resolveMeshTypes, validateMesh } from './core/data/dataset.js';

@@ -129,6 +129,42 @@ export interface CurrentValueConfig<M = unknown> {
   color?: string;
 }
 
+/**
+ * A scrolling data table mounted on one edge of the chart, exactly like the
+ * legend — same `position` / `align` vocabulary and the same measure-then-inset
+ * contract, so a table, a legend and a title on one edge stack instead of
+ * overlapping.
+ *
+ * Presentational only: the chart formats its own rows and hands them over, so
+ * `core` never learns what any particular chart's data means.
+ */
+export interface TableConfig {
+  /** Show the table. Default false. */
+  show?: boolean;
+  /** Which edge to place it on. Default 'right'. */
+  position?: Side;
+  /** Cross-axis alignment, matching {@link LegendConfig.align}. Default 'center'. */
+  align?: 'start' | 'center' | 'end';
+  /** Rows kept in the DOM. Default 500. */
+  maxRows?: number;
+  /** Click a row to select the matching mark. Default true. */
+  interactive?: boolean;
+  /** Keep the header visible while the body scrolls. Default true. */
+  stickyHeader?: boolean;
+  /** Scroll the selected row into view when the selection changes. Default true. */
+  followSelection?: boolean;
+  /** Max height (CSS length) before the body scrolls. Default '100%'. */
+  maxHeight?: string;
+  /** Max width (CSS length) on a left/right edge. Default '220px'. */
+  maxWidth?: string;
+  /** Font size in px. Default 11. */
+  fontPx?: number;
+  /** Font-family stack (CSS). Default 'system-ui, sans-serif'. */
+  fontFamily?: string;
+  /** Text color (CSS). */
+  color?: string;
+}
+
 /** Where to pin the FPS meter, or `'off'` to hide it. */
 export type FpsPosition = Side | 'off';
 

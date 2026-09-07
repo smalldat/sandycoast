@@ -15,6 +15,8 @@ const ALIGN: Record<ResolvedTitle['align'], string> = {
 export class Title {
   private root: HTMLDivElement;
   private cfg: ResolvedTitle;
+  /** How far in another layer on this edge already pushed, CSS px. */
+  private edgeOffset = 0;
 
   constructor(host: HTMLElement, cfg: ResolvedTitle) {
     this.cfg = cfg;
@@ -37,6 +39,15 @@ export class Title {
     this.applyStyle();
   }
 
+  /**
+   * Inset this layer by `px` on its own edge, so it stacks with a legend or
+   * table on that edge instead of drawing on top of it.
+   */
+  setEdgeOffset(px: number): void {
+    this.edgeOffset = px;
+    this.applyStyle();
+  }
+
   private applyStyle(): void {
     const c = this.cfg;
     const s = this.root.style;
@@ -44,6 +55,7 @@ export class Title {
     s.color = c.color;
     s.font = `${c.fontWeight} ${c.fontPx}px ${c.fontFamily}`;
     s.top = s.right = s.bottom = s.left = 'auto';
+    const off = `${this.edgeOffset}px`;
     const horizontal = c.position === 'top' || c.position === 'bottom';
     if (horizontal) {
       s.left = '0';
@@ -51,8 +63,8 @@ export class Title {
       s.justifyContent = ALIGN[c.align];
       s.writingMode = 'horizontal-tb';
       s.transform = 'none';
-      if (c.position === 'top') s.top = '0';
-      else s.bottom = '0';
+      if (c.position === 'top') s.top = off;
+      else s.bottom = off;
     } else {
       // Side titles read vertically, mirroring a rotated Y-axis label.
       s.top = '0';
@@ -60,8 +72,8 @@ export class Title {
       s.justifyContent = ALIGN[c.align];
       s.writingMode = 'vertical-rl';
       s.transform = c.position === 'left' ? 'rotate(180deg)' : 'none';
-      if (c.position === 'left') s.left = '0';
-      else s.right = '0';
+      if (c.position === 'left') s.left = off;
+      else s.right = off;
     }
   }
 

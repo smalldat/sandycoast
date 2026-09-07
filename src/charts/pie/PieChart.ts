@@ -11,6 +11,7 @@ import { Legend, type LegendEntry } from '../../core/chrome/legend.js';
 import { Title } from '../../core/chrome/title.js';
 import { appendPoints, patchPoints, removePoints } from '../../core/data/dataset.js';
 import type { DataSet, Point, PointPatch, PointRef, Scalar } from '../../core/data/types.js';
+import { squareRect } from '../../core/layout/polar.js';
 import { ease, scatterStarts } from '../../core/particles/anim.js';
 import { type GrainBuffer, allocGrains } from '../../core/particles/grains.js';
 import { packWedges, wedgeGrainCounts } from '../../core/particles/pack.js';
@@ -432,13 +433,7 @@ export class PieChart {
     const W = Math.max(1, this.canvas.width);
     const H = Math.max(1, this.canvas.height);
     this.plotRect = marginsToPlotRect(this.margins(), W, H, this.dpr);
-    const [x0, y0, x1, y1] = this.plotRect;
-    const side = Math.min((x1 - x0) * W, (y1 - y0) * H);
-    const halfW = side / 2 / W;
-    const halfH = side / 2 / H;
-    const cx = (x0 + x1) / 2;
-    const cy = (y0 + y1) / 2;
-    this.discRect = [cx - halfW, cy - halfH, cx + halfW, cy + halfH];
+    this.discRect = squareRect(this.plotRect, W, H);
   }
 
   private drawOverlay(now = this.nowSeconds()): void {

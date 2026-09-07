@@ -1,4 +1,4 @@
-import { BarChart, LineChart, PieChart } from '../../src/index.js';
+import { BarChart, LineChart, PieChart, WindRoseChart } from '../../src/index.js';
 import type { ChartKind, ProbeEvent } from '../scenarios/types.js';
 
 /** The slice of a chart's API the harness needs. Every visual satisfies it. */
@@ -39,6 +39,13 @@ export const CHARTS: Record<ChartKind, ChartFactory> = {
     chart.on('hover', (p) => emit({ type: 'hover', payload: p.slice }));
     chart.on('seriesChange', (p) => emit({ type: 'seriesChange', payload: p }));
     chart.on('seriesFocus', (p) => emit({ type: 'seriesFocus', payload: p }));
+    return chart;
+  },
+  windrose: (host, config, emit) => {
+    const chart = new WindRoseChart(host, config as never);
+    chart.on('hover', (p) => emit({ type: 'hover', payload: p.segment }));
+    chart.on('select', (p) => emit({ type: 'select', payload: p }));
+    chart.on('highlight', (p) => emit({ type: 'highlight', payload: p }));
     return chart;
   },
 };
