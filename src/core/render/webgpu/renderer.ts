@@ -27,6 +27,8 @@ export class WebGPURenderer implements Renderer {
   private hoverCap = 0;
   private dimBuf: GPUBuffer | null = null;
   private dimCap = 0;
+  private emphBuf: GPUBuffer | null = null;
+  private emphCap = 0;
   private bindGroup: GPUBindGroup | null = null;
   private bindLayout!: GPUBindGroupLayout;
   private grainCount = 0;
@@ -72,6 +74,11 @@ export class WebGPURenderer implements Renderer {
         },
         {
           binding: 3,
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: 'read-only-storage' },
+        },
+        {
+          binding: 4,
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: 'read-only-storage' },
         },
@@ -201,6 +208,26 @@ export class WebGPURenderer implements Renderer {
       u.dimWeights as unknown as GPUAllowSharedBufferSource,
     );
 
+    // Per-bar emphasis weights (brightness only), same grow-on-demand pattern.
+    // Absent from a chart's uniforms = a zero-filled buffer, so the shader reads
+    // 0 for every bar and the effect costs nothing.
+    const emph = u.emphasisWeights;
+    const emphCount = Math.max(1, emph?.length ?? 1);
+    if (!this.emphBuf || this.emphCap < emphCount) {
+      this.emphBuf?.destroy();
+      this.emphCap = Math.max(4, emphCount);
+      this.emphBuf = this.device.createBuffer({
+        size: this.emphCap * 4,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      this.bindGroup = null;
+    }
+    this.device.queue.writeBuffer(
+      this.emphBuf,
+      0,
+      (emph ?? new Float32Array(this.emphCap)) as unknown as GPUAllowSharedBufferSource,
+    );
+
     if (!this.bindGroup) {
       this.bindGroup = this.device.createBindGroup({
         layout: this.bindLayout,
@@ -209,6 +236,7 @@ export class WebGPURenderer implements Renderer {
           { binding: 1, resource: { buffer: this.paletteBuf } },
           { binding: 2, resource: { buffer: this.hoverBuf } },
           { binding: 3, resource: { buffer: this.dimBuf } },
+          { binding: 4, resource: { buffer: this.emphBuf } },
         ],
       });
     }
@@ -241,7 +269,7 @@ export class WebGPURenderer implements Renderer {
     d[19] = u.plotRect[3];
     d[20] = u.hoverOpacity;
     d[21] = u.dimOpacity;
-    d[22] = 0;
+    d[22] = u.emphasisGain ?? 1;
     d[23] = 0;
     d[24] = u.viewScale?.[0] ?? 1;
     d[25] = u.viewScale?.[1] ?? 1;
@@ -295,11 +323,13 @@ export class WebGPURenderer implements Renderer {
     this.paletteBuf?.destroy();
     this.hoverBuf?.destroy();
     this.dimBuf?.destroy();
+    this.emphBuf?.destroy();
     this.uniformBuf?.destroy();
     this.quadBuf?.destroy();
     this.instBuf = null;
     this.paletteBuf = null;
     this.hoverBuf = null;
     this.dimBuf = null;
+    this.emphBuf = null;
   }
 }

@@ -45,4 +45,29 @@ function parseHex(s: string): RGBA {
   return [r, g, b, a];
 }
 
+/**
+ * Sample a sequential color ramp at `t` (clamped to 0..1), interpolating
+ * linearly between adjacent stops in RGBA space.
+ *
+ * Charts that color by a *continuous* quantity (the wind rose's intensity, for
+ * instance) read the same `colors` array as a ramp rather than cycling it per
+ * mark, so one config knob covers both categorical and continuous coloring.
+ */
+export function colorRamp(stops: RGBA[], t: number): RGBA {
+  if (stops.length === 0) return [0, 0, 0, 1];
+  if (stops.length === 1) return stops[0]!;
+  const u = t < 0 || Number.isNaN(t) ? 0 : t > 1 ? 1 : t;
+  const pos = u * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(pos));
+  const f = pos - i;
+  const a = stops[i]!;
+  const b = stops[i + 1]!;
+  return [
+    a[0] + (b[0] - a[0]) * f,
+    a[1] + (b[1] - a[1]) * f,
+    a[2] + (b[2] - a[2]) * f,
+    a[3] + (b[3] - a[3]) * f,
+  ];
+}
+
 export const DEFAULT_PALETTE = ['#e8598b', '#8bc4e8', '#e8c45a', '#5ae89a', '#b98be8', '#e8895a'];

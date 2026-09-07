@@ -26,6 +26,8 @@ export class Legend {
   private onEntryClick: ((index: number) => void) | undefined;
   private items: HTMLSpanElement[] = [];
   private focused: number | null = null;
+  /** How far in another layer on this edge already pushed, CSS px. */
+  private edgeOffset = 0;
 
   constructor(host: HTMLElement, cfg: ResolvedLegend, onEntryClick?: (index: number) => void) {
     this.cfg = cfg;
@@ -112,11 +114,24 @@ export class Legend {
     });
   }
 
+  /**
+   * Inset this layer by `px` on its own edge, so it stacks under a title or
+   * table already occupying that edge instead of drawing on top of it.
+   *
+   * The plot margins have always summed both layers' extents, but each layer
+   * pinned itself at `edge: 0` — correct inset, overlapping layers.
+   */
+  setEdgeOffset(px: number): void {
+    this.edgeOffset = px;
+    this.applyPosition();
+  }
+
   private applyPosition(): void {
     const s = this.root.style;
     s.display = this.cfg.show ? 'flex' : 'none';
     // reset edges
     s.top = s.right = s.bottom = s.left = 'auto';
+    const off = `${this.edgeOffset}px`;
     const horizontal = this.cfg.position === 'top' || this.cfg.position === 'bottom';
     s.flexDirection = horizontal ? 'row' : 'column';
     s.flexWrap = horizontal ? 'wrap' : 'nowrap';
@@ -125,15 +140,15 @@ export class Legend {
       s.right = '0';
       s.justifyContent = ALIGN[this.cfg.align];
       s.alignItems = 'center';
-      if (this.cfg.position === 'top') s.top = '0';
-      else s.bottom = '0';
+      if (this.cfg.position === 'top') s.top = off;
+      else s.bottom = off;
     } else {
       s.top = '0';
       s.bottom = '0';
       s.justifyContent = 'center';
       s.alignItems = ALIGN[this.cfg.align];
-      if (this.cfg.position === 'left') s.left = '0';
-      else s.right = '0';
+      if (this.cfg.position === 'left') s.left = off;
+      else s.right = off;
     }
   }
 

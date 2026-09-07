@@ -1,4 +1,4 @@
-import { BarChart, LineChart, PieChart } from '../../dist/index.js';
+import { BarChart, LineChart, PieChart, WindRoseChart } from '../../dist/index.js';
 import type { ChartKind } from '../scenarios/types.js';
 import type { ChartFactory } from './charts.js';
 
@@ -26,6 +26,13 @@ export const CHARTS: Record<ChartKind, ChartFactory> = {
     chart.on('hover', (p) => emit({ type: 'hover', payload: p.slice }));
     chart.on('seriesChange', (p) => emit({ type: 'seriesChange', payload: p }));
     chart.on('seriesFocus', (p) => emit({ type: 'seriesFocus', payload: p }));
+    return chart;
+  },
+  windrose: (host, config, emit) => {
+    const chart = new WindRoseChart(host, config as never);
+    chart.on('hover', (p) => emit({ type: 'hover', payload: p.segment }));
+    chart.on('select', (p) => emit({ type: 'select', payload: p }));
+    chart.on('highlight', (p) => emit({ type: 'highlight', payload: p }));
     return chart;
   },
 };

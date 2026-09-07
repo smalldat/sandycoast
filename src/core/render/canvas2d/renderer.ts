@@ -75,6 +75,10 @@ export class Canvas2DRenderer implements Renderer {
     }
     const dimW = u.dimWeights;
     const dimOn = u.dimOpacity >= 0;
+    // Emphasis brightens without jittering — see FrameUniforms.emphasisWeights.
+    const emphW = u.emphasisWeights;
+    const emphGain = u.emphasisGain ?? 1;
+    const emphOn = !!emphW && emphW.length > 0 && emphGain !== 1;
     // Group draws by color to cut fillStyle churn; hovered/dimmed grains
     // (weight>0) fall out of the group with a per-grain (eased) style.
     for (let ci = 0; ci < u.palette.length; ci++) {
@@ -85,6 +89,7 @@ export class Canvas2DRenderer implements Renderer {
         const barId = g.barId[i]!;
         const w = weights[barId] ?? 0;
         const dw = dimW[barId] ?? 0;
+        const ew = emphOn ? (emphW![barId] ?? 0) : 0;
         evalGrain(g, i, u.now, u.duration, u.easing, u.settleJitterAmp, tmp);
         // Hover jitter, matching the GPU: settle-independent, and left in layout
         // space so it scales with zoom along with the rest of the geometry.
@@ -103,15 +108,19 @@ export class Canvas2DRenderer implements Renderer {
         const py = (1 - (py0 + vy * ph)) * this.h;
 
         const dimMul = dimOn ? 1 + (Math.max(u.dimOpacity, 0) - 1) * dw : 1;
-        if (w > 0.001 || dw > 0.001) {
+        if (w > 0.001 || dw > 0.001 || ew > 0.001) {
           const alpha = (opOn ? fade + (u.hoverOpacity - fade) * w : fade) * dimMul;
-          ctx.fillStyle = rgbaCss(color, 1 + (u.highlightGain - 1) * w, alpha);
+          // Hover and emphasis gains add, so hovering an emphasised mark reads
+          // brighter still rather than the two overwriting each other.
+          const gain = 1 + (u.highlightGain - 1) * w + (emphGain - 1) * ew;
+          ctx.fillStyle = rgbaCss(color, gain, alpha);
           plainSet = false;
         } else if (!plainSet) {
           ctx.fillStyle = rgbaCss(color, 1, fade);
           plainSet = true;
         }
-        if (fade <= 0 && !(w > 0.001) && !(dw > 0.001)) continue; // faded, un-hovered, un-dimmed → skip draw
+        // Faded, un-hovered, un-dimmed and un-emphasised → nothing to draw.
+        if (fade <= 0 && !(w > 0.001) && !(dw > 0.001) && !(ew > 0.001)) continue;
 
         if (u.grainShape === 'disc') {
           ctx.beginPath();

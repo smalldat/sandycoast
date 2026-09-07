@@ -4,7 +4,7 @@
 // `harness/charts.ts` instead, keyed by `Scenario.chart`.
 
 /** Which chart factory the harness should use for this scenario. */
-export type ChartKind = 'bar' | 'line' | 'pie';
+export type ChartKind = 'bar' | 'line' | 'pie' | 'windrose';
 
 /** One scripted action against the mounted chart. */
 export type Act =
@@ -18,7 +18,11 @@ export type Act =
   /** Advance the fake clock, running the animation frames it covers. */
   | { kind: 'advance'; ms: number }
   /** Click the nth legend entry (DOM order) — requires `legend.interactive`. */
-  | { kind: 'clickLegend'; index: number };
+  | { kind: 'clickLegend'; index: number }
+  /** Click a fraction of the chart host box, origin top-left. */
+  | { kind: 'clickFrac'; x: number; y: number }
+  /** Click the nth time-table row (newest first) — requires `table.show`. */
+  | { kind: 'clickTableRow'; index: number };
 
 /** Assertions checked after an action. All fields are optional. */
 export interface Expectation {

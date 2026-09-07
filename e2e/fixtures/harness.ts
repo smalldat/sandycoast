@@ -26,6 +26,11 @@ export interface Mounted {
   backend(): Promise<string | null>;
   /** Fraction of painted pixels on the grain canvas; -1 if not readable (GPU). */
   ink(): Promise<number>;
+  /**
+   * Content hash of the grain canvas; -1 if not readable (GPU). Two equal
+   * hashes mean nothing moved — which is how "static at rest" is asserted.
+   */
+  canvasHash(): Promise<number>;
   /** Uncaught page errors collected since navigation. */
   errors: string[];
   /** Programmatic twin of a legend click (same code path as `clickLegend`). */
@@ -64,6 +69,7 @@ export async function mountScenario(
     events: () => page.evaluate(() => window.__sc?.events ?? []),
     backend: () => page.evaluate(() => window.__sc?.backend ?? null),
     ink: () => page.evaluate(inkFraction),
+    canvasHash: () => page.evaluate(canvasContentHash),
     errors,
     focusSeries: (index) => page.evaluate((i) => window.__sc?.focusSeries(i), index),
     getFocusedSeries: () => page.evaluate(() => window.__sc?.getFocusedSeries() ?? null),
@@ -120,10 +126,46 @@ async function perform(m: Mounted, act: Act): Promise<void> {
       return;
     case 'clickLegend':
       // The legend is a real DOM layer (see core/chrome/legend.ts), so a plain
-      // click drives the exact same listener a user click would.
-      await m.host.locator('[role="button"]').nth(act.index).click();
+      // click drives the exact same listener a user click would. Table rows are
+      // also role=button, so they are excluded rather than counted here.
+      await m.host.locator('[role="button"]:not([data-row-id])').nth(act.index).click();
+      return;
+    case 'clickFrac':
+      await m.page.mouse.click(box.x + box.width * act.x, box.y + box.height * act.y);
+      return;
+    case 'clickTableRow':
+      // The time table is a real DOM layer too (core/chrome/table.ts); rows
+      // carry data-row-id, which is what tells them from legend entries.
+      await m.host.locator('[data-row-id]').nth(act.index).click();
       return;
   }
+}
+
+/**
+ * Runs in the page: FNV-1a over every channel byte of the grain canvas.
+ *
+ * Hashes all four channels rather than gating on alpha, so it notices a grain
+ * that merely *moved* or changed brightness — an alpha-gated count would call
+ * two different pictures identical as long as the same number of pixels were
+ * lit.
+ */
+function canvasContentHash(): number {
+  const c = document.querySelector<HTMLCanvasElement>('#host canvas');
+  if (!c) return -1;
+  let ctx: CanvasRenderingContext2D | null = null;
+  try {
+    ctx = c.getContext('2d');
+  } catch {
+    return -1;
+  }
+  if (!ctx) return -1;
+  const { data } = ctx.getImageData(0, 0, c.width, c.height);
+  let h = 2166136261;
+  for (let i = 0; i < data.length; i++) {
+    h ^= data[i]!;
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h;
 }
 
 /** Runs in the page: share of non-transparent pixels on the grain canvas. */

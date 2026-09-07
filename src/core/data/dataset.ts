@@ -8,6 +8,7 @@ import type {
   PointRef,
   Scalar,
 } from './types.js';
+import type { NormalizedWind, WindDataSet, WindObservation } from './wind.js';
 
 /** Infer a {@link FieldType} from a sample value. */
 export function inferType(v: Scalar): FieldType {
@@ -192,4 +193,90 @@ export function validateMesh(ds: MeshDataSet): void {
       }
     }
   }
+}
+
+// --- WindDataSet counterparts (wind rose chart) -----------------------------
+//
+// A wind observation carries one dimension (time) and two indicators
+// (direction, intensity) — a shape neither Point<X,Y,Z> nor MeshPoint has a
+// slot for (see core/data/wind.ts), so it needs its own validate/normalize.
+
+const TAU = Math.PI * 2;
+
+/**
+ * Validate structural invariants of a wind dataset; throws {@link DataError}.
+ *
+ * Non-finite and negative *values* are not an error — a live feed produces
+ * those, and {@link normalizeWind} drops those rows. What throws here is a
+ * mis-shaped dataset: a missing field, a field of the wrong kind, or a
+ * `direction` that cannot mean what `directionUnit` says it means.
+ */
+export function validateWind(ds: WindDataSet): void {
+  if (!Array.isArray(ds.points)) throw new DataError('windDataset.points must be an array');
+  const unit = ds.directionUnit ?? 'deg';
+  for (let i = 0; i < ds.points.length; i++) {
+    const p = ds.points[i]!;
+    const at = `windDataset.points[${i}]`;
+    if (p.t === null || p.t === undefined) throw new DataError(`${at}.t is missing`);
+    if (!(p.t instanceof Date) && typeof p.t !== 'number') {
+      throw new DataError(`${at}.t must be a Date or an epoch number`);
+    }
+    if (typeof p.direction !== 'number') throw new DataError(`${at}.direction must be a number`);
+    if (typeof p.intensity !== 'number') throw new DataError(`${at}.intensity must be a number`);
+    // Degrees wrap freely (370° and -10° are both meaningful headings), but a
+    // "radian" outside one turn is almost always degrees mislabelled, and a
+    // silent reinterpretation would rotate the whole rose without saying so.
+    if (unit === 'rad' && Number.isFinite(p.direction)) {
+      if (p.direction < 0 || p.direction > TAU + 1e-9) {
+        throw new DataError(
+          `${at}.direction (${p.direction}) is outside [0, 2π] but directionUnit is 'rad' — did you mean directionUnit: 'deg'?`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Normalize a wind dataset for the chart: direction to radians clockwise from
+ * north in `[0, 2π)`, time to epoch ms, rows sorted oldest → newest.
+ *
+ * Rows whose time, direction or intensity is non-finite — or whose intensity is
+ * negative — are **dropped rather than clamped**: a NaN heading has no sector,
+ * and inventing one would put a mark somewhere the data never claimed. The
+ * count is reported so a caller can surface the disagreement.
+ *
+ * Sorting happens here rather than in the caller: "the latest observation" has
+ * to mean the same thing whatever order the rows arrived in.
+ */
+export function normalizeWind<Custom>(ds: WindDataSet<Custom>): NormalizedWind<Custom> {
+  const toRad = (ds.directionUnit ?? 'deg') === 'rad' ? 1 : Math.PI / 180;
+  const out: WindObservation<Custom>[] = [];
+  let dropped = 0;
+
+  for (let i = 0; i < ds.points.length; i++) {
+    const p = ds.points[i]!;
+    const t = p.t instanceof Date ? p.t.getTime() : p.t;
+    if (!Number.isFinite(t) || !Number.isFinite(p.direction) || !Number.isFinite(p.intensity)) {
+      dropped++;
+      continue;
+    }
+    if (p.intensity < 0) {
+      dropped++;
+      continue;
+    }
+    let dir = (p.direction * toRad) % TAU;
+    if (dir < 0) dir += TAU;
+    out.push({ id: i, t, direction: dir, intensity: p.intensity, custom: p.custom });
+  }
+
+  // Ties break on id, so a burst of same-millisecond readings still has a
+  // well-defined "latest" instead of depending on the sort's stability.
+  out.sort((a, b) => a.t - b.t || a.id - b.id);
+
+  return {
+    points: out,
+    dropped,
+    intensityLabel: ds.intensityLabel ?? 'Speed',
+    intensityUnit: ds.intensityUnit ?? '',
+  };
 }

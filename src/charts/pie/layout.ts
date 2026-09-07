@@ -1,13 +1,19 @@
 import { resolveTypes, seriesKeys, toNumeric, validate } from '../../core/data/dataset.js';
 import type { DataSet, Point, Scalar } from '../../core/data/types.js';
+import {
+  CENTER,
+  MAX_RADIUS,
+  angleInWedge,
+  clamp,
+  layoutToAngle,
+} from '../../core/layout/polar.js';
 import type { Wedge } from '../../core/particles/pack.js';
 import type { RGBA } from '../../core/render/types.js';
 import { DEFAULT_MAX_SERIES, DEFAULT_MAX_SLICES, type SliceMeta } from './types.js';
 
-/** Center of the disc in layout space; the pie chart maps that box to a square. */
-export const CENTER = 0.5;
-/** Half-extent of the layout box — the largest radius that still fits. */
-export const MAX_RADIUS = 0.5;
+// Disc geometry is shared with the wind rose and lives in `core/layout/polar`.
+// Re-exported here so the pie's public surface is unchanged.
+export { CENTER, MAX_RADIUS };
 
 const TAU = Math.PI * 2;
 
@@ -38,10 +44,6 @@ export interface PieLayout {
   seriesIndex: number;
   /** Sum of the drawn slices' values (0 when the series is empty). */
   total: number;
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
 }
 
 /**
@@ -135,16 +137,12 @@ export function hitSlice(metas: SliceMeta[], lx: number, ly: number): SliceMeta 
   const dy = ly - CENTER;
   const r = Math.hypot(dx, dy);
   // Angle clockwise from 12 o'clock, matching the wedge convention.
-  let a = Math.atan2(dx, dy);
-  if (a < 0) a += TAU;
+  const a = layoutToAngle(dx, dy);
   for (const m of metas) {
     if (r < m.rInner || r > m.rOuter) continue;
-    // Wedges may start at any rotation and wrap past a full turn, so test the
-    // angle in every equivalent revolution the sweep can cover.
-    for (let turn = -1; turn <= 1; turn++) {
-      const t = a + turn * TAU;
-      if (t >= m.a0 && t <= m.a1) return m;
-    }
+    // Wedges may start at any rotation and wrap past a full turn; `angleInWedge`
+    // tests every equivalent revolution the sweep can cover.
+    if (angleInWedge(a, m.a0, m.a1)) return m;
   }
   return null;
 }

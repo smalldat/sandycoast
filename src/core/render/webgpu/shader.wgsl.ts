@@ -11,7 +11,7 @@ struct Uniforms {
   background : vec4<f32>,
   // plot rect the layout box maps into: x0, y0, x1, y1 (normalized, y-up)
   plot : vec4<f32>,
-  // hoverOpacity (<0 = disabled), dimOpacity (<0 = disabled), reserved, reserved
+  // hoverOpacity (<0 = disabled), dimOpacity (<0 = disabled), emphasisGain, reserved
   d : vec4<f32>,
   // pan/zoom: scaleX, scaleY, offsetX, offsetY (layout space)
   view : vec4<f32>,
@@ -24,6 +24,10 @@ struct Uniforms {
 // Per-bar dim weight in [0,1] (legend isolation); eased on the CPU, independent
 // of hoverW so isolating a series composes with hover instead of replacing it.
 @group(0) @binding(3) var<storage, read> dimW : array<f32>;
+// Per-bar emphasis weight in [0,1]: brightness only. Kept off hoverW because
+// that channel also drives the jitter below, and a persistent emphasis would
+// then shimmer forever instead of just reading brighter.
+@group(0) @binding(4) var<storage, read> emphW : array<f32>;
 
 struct VsOut {
   @builtin(position) pos : vec4<f32>,
@@ -54,6 +58,7 @@ fn vs(
   let seed = md.y;
   let hw = hoverW[u32(ids.y)];
   let dw = dimW[u32(ids.y)];
+  let ew = emphW[u32(ids.y)];
 
   let t = (now - md.x) / duration;
   let te = easeApply(t, easingKind);
@@ -90,8 +95,9 @@ fn vs(
   let count = U.c.w;
   let idx = clamp(ids.x, 0.0, max(0.0, count - 1.0));
   let base = palette[u32(idx)];
-  // Highlight lerps from 1x to highlightGain by the hover weight.
-  let gain = mix(1.0, U.c.x, hw);
+  // Highlight lerps from 1x to highlightGain by the hover weight; the emphasis
+  // gain adds on top, so hovering an emphasised grain is brighter still.
+  let gain = mix(1.0, U.c.x, hw) + (U.d.z - 1.0) * ew;
   let grainFade = U.b.w;
   // Opacity effect: hovered grains lerp alpha up to hoverOpacity (U.d.x); a
   // negative value disables it so alpha stays at grainFade.
