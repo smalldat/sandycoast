@@ -60,6 +60,13 @@ jobs:
       - name: Build package
         run: npm run build
 
+      # Drops the "## Status" prose and the "Publish to GitHub Pages" note —
+      # both are about the GitHub project, not useful on the npm package page.
+      # Working-tree only, like the version bump above — the repo's README.md
+      # (and its GitHub Pages copy) keep both sections.
+      - name: Trim README for npm
+        run: node scripts/npm-readme.mjs
+
       # Auth via OIDC Trusted Publishing — no NPM_TOKEN. Requires a trusted
       # publisher configured on npmjs for this repo + workflow, and the
       # id-token: write permission set above. Provenance is automatic.
