@@ -124,7 +124,8 @@ resolve into solid candles with always-solid high-low wicks, a **configurable
 rising/falling colour rule** (`candles.direction`: `openClose` / `closeClose` /
 `lowHigh` / `closeInRange`, or your own function), band or real-time x spacing,
 a **live-price line** at the latest `actual`, an instrument slider shared with
-the pie chart, and **overridable mouse events** (`interaction.pointer`).
+the pie chart, and **overridable mouse events** (`interaction.mouse`, the
+cancellable hook contract shared with the wind rose).
 See [plans/13-candlestick-chart.md](https://github.com/smalldat/sandycoast/blob/main/plans/13-candlestick-chart.md).
 `LineChart`: solid line / spline / **stacked area** (`line.stack`), grain count
 bounded by ribbon area not point count (`maxGrains` is a hard ceiling), a

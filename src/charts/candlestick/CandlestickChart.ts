@@ -20,6 +20,7 @@ import { Title } from '../../core/chrome/title.js';
 import { appendCandles, patchCandles, removeCandles } from '../../core/data/dataset.js';
 import type { Candle, CandlePatch, CandleRef, OhlcDataSet } from '../../core/data/ohlc.js';
 import type { Scalar } from '../../core/data/types.js';
+import { runMouseHook } from '../../core/interaction/mouse.js';
 import { ease, scatterStarts } from '../../core/particles/anim.js';
 import { type GrainBuffer, allocGrains } from '../../core/particles/grains.js';
 import { boxGrainCounts, packBoxes } from '../../core/particles/pack.js';
@@ -52,9 +53,10 @@ import type {
   CandlestickChartConfig,
   ClickPayload,
   HoverPayload,
-  PointerOverrides,
+  MouseConfig,
   SeriesChangePayload,
   SeriesFocusPayload,
+  Side,
 } from './types.js';
 
 /** Legend entry labels: the legend describes the two color groups. */
@@ -90,7 +92,7 @@ interface Resolved {
   dimOpacity: number;
   /** Dim ease in/out time, seconds. */
   dimFade: number;
-  pointer: PointerOverrides;
+  mouse: MouseConfig;
 }
 
 function resolve(cfg: CandlestickChartConfig): Resolved {
@@ -124,7 +126,7 @@ function resolve(cfg: CandlestickChartConfig): Resolved {
     hoverFade: (hover?.fadeMs ?? 180) / 1000,
     dimOpacity: cfg.interaction?.dim?.opacity ?? 0.15,
     dimFade: (cfg.interaction?.dim?.fadeMs ?? 200) / 1000,
-    pointer: cfg.interaction?.pointer ?? {},
+    mouse: cfg.interaction?.mouse ?? {},
   };
 }
 
@@ -259,6 +261,8 @@ export class CandlestickChart implements PanZoomable {
   private startTime = 0;
   private lastFrameMs = 0;
   private hoveredCandleId = -1;
+  /** Last candle id the `hover` event reported, so it fires once per change. */
+  private lastEmittedHover = -1;
   /** Per-candle hover weight in [0,1], eased toward 1 for the hovered candle. */
   private hoverWeights = new Float32Array(0);
   /** Direction group isolated via the legend / `focusSeries()` (0 rising, 1 falling). */
@@ -356,7 +360,7 @@ export class CandlestickChart implements PanZoomable {
     this.overlay = new Overlay(oc);
 
     if (this.chrome.legend.show) {
-      this.legend = new Legend(this.el, this.chrome.legend, (i) => this.handleLegendClick(i));
+      this.legend = new Legend(this.el, this.chrome.legend, (i, e) => this.handleLegendClick(i, e));
     }
     if (this.chrome.title.show) this.title = new Title(this.el, this.chrome.title);
   }
@@ -425,9 +429,10 @@ export class CandlestickChart implements PanZoomable {
   }
 
   /** Legend entry `i` was clicked: toggle isolation of that direction group. */
-  private handleLegendClick(i: number): void {
-    if (this.cfg.pointer.legendClick?.(i) === false) return;
-    this.setFocus(this.focusedDirection === i ? null : i);
+  private handleLegendClick(i: number, e: MouseEvent | KeyboardEvent): void {
+    runMouseHook(this.cfg.mouse.onLegendClick, i, e, this.cssPointOf(e), () => {
+      this.setFocus(this.focusedDirection === i ? null : i);
+    });
   }
 
   private setFocus(index: number | null): void {
@@ -469,16 +474,31 @@ export class CandlestickChart implements PanZoomable {
 
   private recomputePlotRect(): void {
     const m = axisMargins(this.chrome);
+    // Layers on one edge must stack, not overlap: each DOM layer is told how
+    // far in the previous one already pushed, and the plot is inset by the
+    // total. The canvas-drawn slider gets the same treatment via `offsetPx`.
+    const offsets: Record<Side, number> = { top: 0, right: 0, bottom: 0, left: 0 };
     // Only a bottom slider shares an edge with the period axis.
     this.sliderOffsetPx = this.sliderCfg.position === 'bottom' ? this.axisBandPx() : 0;
     if (this.sliderCfg.show && this.seriesCount > 1) {
-      m[this.sliderCfg.position] += sliderBandPx(this.sliderCfg, this.chrome.x);
-    }
-    if (this.legend && this.chrome.legend.show) {
-      m[this.chrome.legend.position] += this.legend.measure() + 6;
+      const side = this.sliderCfg.position;
+      const ext = sliderBandPx(this.sliderCfg, this.chrome.x);
+      offsets[side] += ext;
+      m[side] += ext;
     }
     if (this.title && this.chrome.title.show) {
-      m[this.chrome.title.position] += this.title.measure() + 4;
+      const side = this.chrome.title.position;
+      this.title.setEdgeOffset(offsets[side]);
+      const ext = this.title.measure() + 4;
+      offsets[side] += ext;
+      m[side] += ext;
+    }
+    if (this.legend && this.chrome.legend.show) {
+      const side = this.chrome.legend.position;
+      this.legend.setEdgeOffset(offsets[side]);
+      const ext = this.legend.measure() + 6;
+      offsets[side] += ext;
+      m[side] += ext;
     }
     this.plotRect = marginsToPlotRect(m, this.canvas.width, this.canvas.height, this.dpr);
     this.positionZoomControls();
@@ -1090,6 +1110,19 @@ export class CandlestickChart implements PanZoomable {
 
   // --- Pointer -------------------------------------------------------------
 
+  /** Pointer position in CSS px, relative to the chart element (hook context). */
+  private cssPoint(e: PointerEvent): { x: number; y: number } {
+    return this.cssPointOf(e);
+  }
+
+  /** CSS-px position of any DOM event with client coords; `{0,0}` for the rest. */
+  private cssPointOf(e: Event): { x: number; y: number } {
+    const rect = this.el.getBoundingClientRect();
+    const p = e as Partial<MouseEvent>;
+    if (typeof p.clientX !== 'number' || typeof p.clientY !== 'number') return { x: 0, y: 0 };
+    return { x: p.clientX - rect.left, y: p.clientY - rect.top };
+  }
+
   /** Pointer position in device px (y-down), relative to the canvas. */
   private devicePoint(e: PointerEvent): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
@@ -1129,13 +1162,14 @@ export class CandlestickChart implements PanZoomable {
   }
 
   /** Move the selection to wherever `p` (device px) points along the track. */
-  private seekTo(p: { x: number; y: number }): void {
+  private seekTo(p: { x: number; y: number }, e: PointerEvent): void {
     const f = fractionAtPx(this.track(), p.x);
     const index = indexAt(f, this.seriesCount);
-    if (this.cfg.pointer.sliderSeek?.(index) === false) return;
-    this.handlePos = f;
-    this.overlayDirty = true;
-    this.setSeriesIndex(index);
+    runMouseHook(this.cfg.mouse.onSliderSeek, index, e, this.cssPoint(e), () => {
+      this.handlePos = f;
+      this.overlayDirty = true;
+      this.setSeriesIndex(index);
+    });
   }
 
   private onPointerDown = (e: PointerEvent): void => {
@@ -1148,7 +1182,7 @@ export class CandlestickChart implements PanZoomable {
     // Keep the pan/zoom controller (attached after this handler) from also
     // treating the grab as a drag-to-pan.
     e.stopImmediatePropagation();
-    this.seekTo(p);
+    this.seekTo(p, e);
   };
 
   private onPointerUp = (e: PointerEvent): void => {
@@ -1165,7 +1199,9 @@ export class CandlestickChart implements PanZoomable {
     if (e.button !== 0 || this.pz.didDrag()) return;
     const { lx, ly } = this.layoutPoint(e);
     const candle = this.hitTest(lx, ly);
-    if (this.cfg.pointer.click?.(candle, e) === false) return;
+    // The chart has no built-in click behavior of its own, so the hook's
+    // `defaultAction` is a no-op; the event fires regardless, per the contract.
+    runMouseHook(this.cfg.mouse.onCandleClick, candle, e, this.cssPoint(e), () => {});
     this.emitter.emit('click', { candle, event: e });
   };
 
@@ -1174,7 +1210,7 @@ export class CandlestickChart implements PanZoomable {
     this.pointerPx = p;
 
     if (this.dragging) {
-      this.seekTo(p);
+      this.seekTo(p, e);
       e.stopImmediatePropagation();
       return;
     }
@@ -1184,21 +1220,26 @@ export class CandlestickChart implements PanZoomable {
 
     const { lx, ly } = this.layoutPoint(e);
     const hit = this.hitTest(lx, ly);
-    if (this.cfg.pointer.hover?.(hit, e) === false) return;
-    const id = hit?.candleId ?? -1;
-    if (id !== this.hoveredCandleId) {
-      this.hoveredCandleId = id;
+    runMouseHook(this.cfg.mouse.onCandleHover, hit, e, this.cssPoint(e), () => {
+      this.hoveredCandleId = hit?.candleId ?? -1;
       this.hovered = hit;
+      if (this.chrome.currentValue.show) this.overlayDirty = true;
+    });
+    // The event fires whether or not the hook cancelled the built-in effect:
+    // an observer is not an override.
+    const id = hit?.candleId ?? -1;
+    if (id !== this.lastEmittedHover) {
+      this.lastEmittedHover = id;
       this.emitter.emit('hover', { candle: hit });
     }
-    if (this.chrome.currentValue.show) this.overlayDirty = true;
   };
 
   private onPointerLeave = (): void => {
     this.pointerPx = null;
-    if (this.hoveredCandleId !== -1) {
-      this.hoveredCandleId = -1;
-      this.hovered = null;
+    this.hoveredCandleId = -1;
+    this.hovered = null;
+    if (this.lastEmittedHover !== -1) {
+      this.lastEmittedHover = -1;
       this.emitter.emit('hover', { candle: null });
     }
     if (this.chrome.currentValue.show) this.overlayDirty = true;

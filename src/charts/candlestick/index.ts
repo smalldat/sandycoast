@@ -33,7 +33,6 @@ export type {
   CandlestickChartConfig,
   ClickPayload,
   HoverPayload,
-  PointerOverrides,
-  PointerOverrideResult,
+  MouseConfig,
   SeriesChangePayload,
 } from './types.js';

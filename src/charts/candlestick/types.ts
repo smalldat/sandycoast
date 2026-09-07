@@ -14,6 +14,7 @@ import type {
 } from '../../core/chrome/types.js';
 import type { Candle, CandleSeries, OhlcDataSet } from '../../core/data/ohlc.js';
 import type { Scalar } from '../../core/data/types.js';
+import type { MouseHook } from '../../core/interaction/mouse.js';
 import type { Easing } from '../../core/particles/anim.js';
 import type { BackendPreference } from '../../core/render/pick.js';
 import type { GrainShape, RGBA } from '../../core/render/types.js';
@@ -161,28 +162,25 @@ export interface ActualConfig {
 }
 
 /**
- * What a {@link PointerOverrides} handler returns. Returning exactly `false`
- * suppresses the chart's own default reaction; a handler that returns nothing
- * (the common case — just observe, or draw your own UI) lets it run.
+ * Caller hooks that can cancel or replace the chart's built-in pointer
+ * behavior. Each receives the mark under the pointer, the raw DOM event and a
+ * `defaultAction()` it may run early, late or not at all; returning `false`
+ * suppresses the default — see `core/interaction/mouse.ts`, the same contract
+ * the wind rose uses.
+ *
+ * The emitter events (`hover`, `click`, `seriesChange`, `seriesFocus`) fire
+ * **either way**: an observer is not an override, so a caller who suppresses
+ * the built-in behavior can still hear about the gesture.
  */
-export type PointerOverrideResult = unknown;
-
-/**
- * Replacements for the chart's built-in mouse reactions. Every handler is
- * optional; returning `false` from one **suppresses** the chart's own default
- * for that gesture (and any event it would have emitted), so a caller can
- * drive its own tooltip, selection model or series switcher. Returning
- * anything else (including nothing) lets the default run as usual.
- */
-export interface PointerOverrides {
-  /** Pointer moved; `candle` is the one the chart would hover (null = none). */
-  hover?: (candle: CandleMeta | null, event: PointerEvent) => PointerOverrideResult;
+export interface MouseConfig {
+  /** Pointer moved over the plot; the mark is the candle in that column. */
+  onCandleHover?: MouseHook<CandleMeta>;
   /** Primary button released over the plot. */
-  click?: (candle: CandleMeta | null, event: PointerEvent) => PointerOverrideResult;
-  /** A legend entry was clicked; default is the isolate/dim toggle. */
-  legendClick?: (index: number) => PointerOverrideResult;
-  /** The series slider was dragged/clicked to `index`. */
-  sliderSeek?: (index: number) => PointerOverrideResult;
+  onCandleClick?: MouseHook<CandleMeta>;
+  /** A legend entry (Rising / Falling) was clicked; default is the dim toggle. */
+  onLegendClick?: MouseHook<number, MouseEvent | KeyboardEvent>;
+  /** The series slider was dragged or clicked; the mark is the target index. */
+  onSliderSeek?: MouseHook<number>;
 }
 
 export interface CandlestickChartConfig {
@@ -278,8 +276,8 @@ export interface CandlestickChartConfig {
     };
     /** Legend click-to-isolate tuning; see {@link LegendConfig.interactive}. */
     dim?: DimConfig;
-    /** Replace the chart's built-in mouse reactions. */
-    pointer?: PointerOverrides;
+    /** Overridable pointer behavior. */
+    mouse?: MouseConfig;
   };
   /**
    * X and Y axes; each off by default. X is the period axis (slotted or

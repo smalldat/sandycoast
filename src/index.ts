@@ -234,8 +234,7 @@ export type {
   CandlestickChartConfig,
   ClickPayload as CandleClickPayload,
   HoverPayload as CandleHoverPayload,
-  PointerOverrideResult as CandlePointerOverrideResult,
-  PointerOverrides as CandlePointerOverrides,
+  MouseConfig as CandleMouseConfig,
   SeriesChangePayload as CandleSeriesChangePayload,
 } from './charts/candlestick/types.js';
 

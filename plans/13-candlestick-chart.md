@@ -4,6 +4,7 @@ Status: **IMPLEMENTED**
 Package: `@smalldat/sandycoast`
 Depends on: Plan 01 (sand rendering + morph), Plan 02 (axes/legend/current value),
 Plan 05 (live data), Plan 09 (pie: the series slider), Plan 11 (series dimming),
+Plan 12 (wind rose: `core/interaction/mouse.ts`, edge-offset stacking),
 `core/chrome/reveal.ts` (shared reveal ramp)
 
 > A candlestick chart on the **same grain machinery as bar/line/pie/scatter**:
@@ -40,8 +41,9 @@ Plan 05 (live data), Plan 09 (pie: the series slider), Plan 11 (series dimming),
    `grain`, `animation`, `interaction.hover`, `interaction.dim`, `axes`,
    `legend`, `title`, `currentValue`, `fps`, `panZoom`, `backend`, plus the
    pie chart's `slider` / `seriesIndex` / `maxSeries`.
-5. **Overridable mouse events.** `interaction.pointer` replaces any built-in
-   pointer reaction (hover, click, legend click, slider seek).
+5. **Overridable mouse events.** `interaction.mouse` replaces any built-in
+   pointer reaction (hover, click, legend click, slider seek), through the
+   cancellable hook contract in `core/interaction/mouse.ts`.
 6. **Component isolation.** No import from `charts/bar|line|pie|scatter/`.
    Anything shared moves to `core/` first — see §6.
 7. **Demo + docs parity.** A playground demo following the scatter demo's
@@ -161,6 +163,13 @@ Axis *drawing* stays per-overlay, matching the existing precedent (bar, line,
 scatter and pie each draw their own); axis *resolution* and tick formatting were
 already shared in `core/chrome/`.
 
+Two pieces are **consumed** from Plan 12 rather than duplicated: the cancellable
+mouse-hook contract (`core/interaction/mouse.ts`, see §9) and `setEdgeOffset`
+stacking, which fixes the same latent overlap this chart had — it sums the
+extents of the layers on an edge, and without the offsets a legend and a title
+on one edge both pin at edge 0. Here the slider is a third layer in that stack,
+so it feeds the offsets too.
+
 ---
 
 ## 7. Modules (SRP)
@@ -207,12 +216,21 @@ Consequence in the frame loop: an in-flight morph always repaints the overlay
 
 ## 9. Overridable mouse events
 
-`interaction.pointer` takes `hover` / `click` / `legendClick` / `sliderSeek`.
-Returning exactly `false` suppresses the chart's own default for that gesture
-*and* the event it would have emitted; anything else (including nothing) lets it
-run. Slider grabs also `stopImmediatePropagation()` so a drag on the handle
-doesn't also drag-to-pan — which is why the chart's pointer listeners attach
-**before** `PanZoomController.attach`.
+`interaction.mouse` takes `onCandleHover` / `onCandleClick` / `onLegendClick` /
+`onSliderSeek`, each a `MouseHook` from **`core/interaction/mouse.ts`** — the
+contract the wind rose introduced (Plan 12), reused rather than reinvented.
+Every hook gets `{ meta, native, px, defaultAction }`: returning `false`
+suppresses the built-in behaviour, anything else runs it after the hook, and
+`defaultAction()` lets a hook run it early or late (an async instrument switch
+on `onSliderSeek`, say). Per that contract the emitter events fire **either
+way** — an observer is not an override.
+
+Two supporting changes: `Legend`'s entry-click callback now passes its DOM
+event, so a legend click can go through the same hook as everything else
+(purely additive — existing callers ignore the second argument); and slider
+grabs `stopImmediatePropagation()` so a drag on the handle doesn't also
+drag-to-pan, which is why the chart's pointer listeners attach **before**
+`PanZoomController.attach`.
 
 ---
 
