@@ -10,8 +10,8 @@ import { FpsMeter, type ResolvedFps, resolveFps } from '../../core/chrome/fps.js
 import { Legend, type LegendEntry } from '../../core/chrome/legend.js';
 import { Title } from '../../core/chrome/title.js';
 import { appendPoints, patchPoints, removePoints } from '../../core/data/dataset.js';
-import { squareRect } from '../../core/layout/polar.js';
 import type { DataSet, Point, PointPatch, PointRef, Scalar } from '../../core/data/types.js';
+import { squareRect } from '../../core/layout/polar.js';
 import { ease, scatterStarts } from '../../core/particles/anim.js';
 import { type GrainBuffer, allocGrains } from '../../core/particles/grains.js';
 import { packWedges, wedgeGrainCounts } from '../../core/particles/pack.js';

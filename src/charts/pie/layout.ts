@@ -1,12 +1,6 @@
 import { resolveTypes, seriesKeys, toNumeric, validate } from '../../core/data/dataset.js';
 import type { DataSet, Point, Scalar } from '../../core/data/types.js';
-import {
-  CENTER,
-  MAX_RADIUS,
-  angleInWedge,
-  clamp,
-  layoutToAngle,
-} from '../../core/layout/polar.js';
+import { CENTER, MAX_RADIUS, angleInWedge, clamp, layoutToAngle } from '../../core/layout/polar.js';
 import type { Wedge } from '../../core/particles/pack.js';
 import type { RGBA } from '../../core/render/types.js';
 import { DEFAULT_MAX_SERIES, DEFAULT_MAX_SLICES, type SliceMeta } from './types.js';
