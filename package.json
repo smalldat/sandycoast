@@ -26,9 +26,7 @@
       "import": "./dist/react.js"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "build": "tsup",
     "build:site": "vite build",
