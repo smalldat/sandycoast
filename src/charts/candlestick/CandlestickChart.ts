@@ -1,3 +1,5 @@
+import type { ChartEvents, ChartFrameInfo } from '../../core/chart/kernel.js';
+import { ChartKernel } from '../../core/chart/kernel.js';
 // Chrome infrastructure (axes/legend/title/margins/fps/slider) is shared by
 // every visual and comes from `core` — never from a sibling chart.
 import { axisMargins, marginsToPlotRect, resolveChrome } from '../../core/chrome/chrome.js';
@@ -28,7 +30,6 @@ import { mulberry32 } from '../../core/particles/rng.js';
 import { pickRenderer } from '../../core/render/pick.js';
 import type { FrameUniforms, RGBA, Renderer } from '../../core/render/types.js';
 import { parseColor } from '../../core/util/color.js';
-import { Emitter } from '../../core/util/emitter.js';
 import { PanZoomController } from '../../core/view/controller.js';
 import { ZoomControls } from '../../core/view/controls.js';
 import {
@@ -134,12 +135,27 @@ function parseBackground(css: string | undefined): RGBA {
   return parseColor(css ?? 'rgba(0,0,0,0)');
 }
 
-type Events = {
+// A type alias, not an interface: only the former carries the implicit index
+// signature that `ChartKernel`'s `Record<string, object>` constraint needs.
+/**
+ * Events this chart adds on top of the standard set every chart inherits.
+ *
+ * `click` narrows the standard one rather than replacing it: listeners get the
+ * shared `meta`/`px`/`button` fields *and* this chart's original
+ * `candle`/`event`, so code written before the standard events kept working.
+ */
+type CandleExtraEvents = {
   hover: HoverPayload;
   click: ClickPayload;
   seriesChange: SeriesChangePayload;
   seriesFocus: SeriesFocusPayload;
 };
+
+/** Items the candlestick chart's data methods accept, per the `data*` events. */
+type CandleItem = Candle | CandlePatch | CandleRef;
+
+/** Everything {@link CandlestickChart.on} accepts: the standard events plus the above. */
+export type CandlestickChartEvents = ChartEvents<CandleMeta, CandleItem, CandleExtraEvents>;
 
 /** How grains enter on a build: fresh pour vs. morph from the prior state. */
 type BuildMode = 'pour' | 'morph';
@@ -220,7 +236,10 @@ function boxOf(m: CandleMeta): CandleBox {
  *   so — like the pie chart — one series is drawn at a time and the slider
  *   picks which, morphing the candles across.
  */
-export class CandlestickChart implements PanZoomable {
+export class CandlestickChart
+  extends ChartKernel<CandleMeta, CandleItem, CandleExtraEvents>
+  implements PanZoomable
+{
   private el: HTMLElement;
   private canvas: HTMLCanvasElement;
   private cfg: Resolved;
@@ -229,7 +248,6 @@ export class CandlestickChart implements PanZoomable {
   private metas: CandleMeta[] = [];
   /** Current dataset (source of truth for {@link update}/{@link add}/{@link remove}). */
   private data: OhlcDataSet = { series: [] };
-  private emitter = new Emitter<Events>();
 
   /** Reveal timing regime: fresh pour vs. in-place morph (body stays solid). */
   private revealMode: BuildMode = 'pour';
@@ -280,6 +298,8 @@ export class CandlestickChart implements PanZoomable {
   /** True while the user drags the handle (it then tracks the pointer exactly). */
   private dragging = false;
   private dragPointerId = -1;
+  /** Where the live drag last was, in CSS px, for the `drag` event's delta. */
+  private lastDragPx = { x: 0, y: 0 };
   /**
    * Gutter the period axis already occupies on the slider's edge, CSS px — the
    * slider is pushed past it so the handle never lands on the axis labels.
@@ -293,6 +313,7 @@ export class CandlestickChart implements PanZoomable {
   private ready: Promise<void>;
 
   constructor(el: HTMLElement, config: CandlestickChartConfig) {
+    super();
     this.el = el;
     this.data = config.data;
     this.cfg = resolve(config);
@@ -307,6 +328,7 @@ export class CandlestickChart implements PanZoomable {
       this.pzCfg,
       () => this.plotRect,
       () => this.onViewChange(),
+      this.panZoomHooks(),
     );
     this.canvas = document.createElement('canvas');
     this.canvas.style.width = '100%';
@@ -318,14 +340,14 @@ export class CandlestickChart implements PanZoomable {
     // series slider all live on it, none of which are optional chrome.
     this.mountChrome();
     if (this.fpsCfg.show) {
-      this.ensureRelative();
+      this.ensureRelative(this.el);
       this.fps = new FpsMeter(this.el, this.fpsCfg.position, this.fpsCfg.color);
     }
     // Chart pointer handlers are attached *before* pan/zoom's so a grab on the
     // slider handle can stop the drag-to-pan listener from also firing.
     this.attachPointer();
     if (this.pzCfg.enabled) {
-      this.ensureRelative();
+      this.ensureRelative(this.el);
       this.pz.attach(this.canvas);
       if (this.pzCfg.controls.show) {
         this.zoomControls = new ZoomControls(this.el, this, this.pzCfg.controls);
@@ -340,12 +362,8 @@ export class CandlestickChart implements PanZoomable {
     this.drawOverlay();
   }
 
-  private ensureRelative(): void {
-    if (getComputedStyle(this.el).position === 'static') this.el.style.position = 'relative';
-  }
-
   private mountChrome(): void {
-    this.ensureRelative();
+    this.ensureRelative(this.el);
 
     const oc = document.createElement('canvas');
     oc.style.position = 'absolute';
@@ -370,6 +388,7 @@ export class CandlestickChart implements PanZoomable {
     this.canvas.addEventListener('pointerleave', this.onPointerLeave);
     this.canvas.addEventListener('pointerdown', this.onPointerDown);
     this.canvas.addEventListener('pointerup', this.onPointerUp);
+    this.canvas.addEventListener('dblclick', this.onDoubleClick);
   }
 
   whenReady(): Promise<void> {
@@ -380,8 +399,16 @@ export class CandlestickChart implements PanZoomable {
     return this.renderer?.kind ?? null;
   }
 
-  on<K extends keyof Events>(event: K, fn: (p: Events[K]) => void): () => void {
-    return this.emitter.on(event, fn);
+  /** Geometry the shared drawing layers project through (see {@link ChartKernel}). */
+  protected chartFrame(): ChartFrameInfo {
+    return {
+      host: this.el,
+      canvas: this.canvas,
+      rect: this.plotRect,
+      dpr: this.dpr,
+      view: this.view,
+      now: this.nowSeconds(),
+    };
   }
 
   private async boot(data: OhlcDataSet, backend: CandlestickChartConfig['backend']): Promise<void> {
@@ -439,7 +466,7 @@ export class CandlestickChart implements PanZoomable {
     if (index === this.focusedDirection) return;
     this.focusedDirection = index;
     this.legend?.setFocus(index);
-    this.emitter.emit('seriesFocus', { index });
+    this.emit('seriesFocus', { index }, { cancelable: false });
   }
 
   /**
@@ -894,7 +921,7 @@ export class CandlestickChart implements PanZoomable {
     if (next === this.seriesIndex) return;
     this.seriesIndex = next;
     this.buildGrains(this.data, 'morph');
-    this.emitter.emit('seriesChange', {
+    this.emit('seriesChange', {
       index: this.seriesIndex,
       key: this.layout?.series[this.seriesIndex],
     });
@@ -913,9 +940,11 @@ export class CandlestickChart implements PanZoomable {
   update(arg: OhlcDataSet | CandlePatch[], seriesIndex = this.seriesIndex): void {
     if (this.disposed) return;
     if (!Array.isArray(arg)) {
+      if (!this.allowsData('dataUpdate', 'replace', [])) return;
       this.buildGrains(arg, 'morph');
       return;
     }
+    if (!this.allowsData('dataUpdate', 'update', arg)) return;
     this.buildGrains(
       this.withSeries(seriesIndex, (c) => patchCandles(c, arg)),
       'morph',
@@ -929,6 +958,7 @@ export class CandlestickChart implements PanZoomable {
   add(candles: Candle | Candle[], seriesIndex = this.seriesIndex): void {
     if (this.disposed) return;
     const list = Array.isArray(candles) ? candles : [candles];
+    if (!this.allowsData('dataAdd', 'add', list)) return;
     if (seriesIndex >= this.data.series.length) {
       const next = [...this.data.series, { candles: list.map((c) => ({ ...c })) }];
       this.buildGrains({ ...this.data, series: next }, 'morph');
@@ -947,6 +977,7 @@ export class CandlestickChart implements PanZoomable {
   remove(refs: CandleRef | CandleRef[], seriesIndex = this.seriesIndex): void {
     if (this.disposed) return;
     const list = Array.isArray(refs) ? refs : [refs];
+    if (!this.allowsData('dataRemove', 'remove', list)) return;
     this.buildGrains(
       this.withSeries(seriesIndex, (c) => removeCandles(c, list)),
       'morph',
@@ -1031,6 +1062,8 @@ export class CandlestickChart implements PanZoomable {
         this.drawOverlay(now);
       }
     }
+    // Caller-owned layers repaint last, on top of the finished frame.
+    this.afterDraw();
     this.raf = requestAnimationFrame(this.loop);
   };
 
@@ -1111,8 +1144,9 @@ export class CandlestickChart implements PanZoomable {
   // --- Pointer -------------------------------------------------------------
 
   /** Pointer position in CSS px, relative to the chart element (hook context). */
-  private cssPoint(e: PointerEvent): { x: number; y: number } {
-    return this.cssPointOf(e);
+  private cssPoint(e: { clientX: number; clientY: number }): { x: number; y: number } {
+    const rect = this.el.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }
 
   /** CSS-px position of any DOM event with client coords; `{0,0}` for the rest. */
@@ -1130,7 +1164,7 @@ export class CandlestickChart implements PanZoomable {
   }
 
   /** Pointer position in layout space (y-up), through the pan/zoom transform. */
-  private layoutPoint(e: PointerEvent): { lx: number; ly: number } {
+  private layoutPoint(e: { clientX: number; clientY: number }): { lx: number; ly: number } {
     const rect = this.canvas.getBoundingClientRect();
     const cx = (e.clientX - rect.left) / Math.max(1, rect.width);
     const cy = 1 - (e.clientY - rect.top) / Math.max(1, rect.height);
@@ -1175,7 +1209,9 @@ export class CandlestickChart implements PanZoomable {
   private onPointerDown = (e: PointerEvent): void => {
     const p = this.devicePoint(e);
     if (!this.overSlider(p)) return;
+    if (!this.allowsDrag('start', 'slider', this.cssPoint(e), 0, 0, e)) return;
     this.dragging = true;
+    this.lastDragPx = this.cssPoint(e);
     this.dragPointerId = e.pointerId;
     this.canvas.setPointerCapture?.(e.pointerId);
     e.preventDefault();
@@ -1189,6 +1225,7 @@ export class CandlestickChart implements PanZoomable {
     if (this.dragging && e.pointerId === this.dragPointerId) {
       this.dragging = false;
       this.dragPointerId = -1;
+      this.allowsDrag('end', 'slider', this.cssPoint(e), 0, 0, e);
       this.canvas.releasePointerCapture?.(e.pointerId);
       // Snap the handle onto the selected tick.
       this.handlePos = trackPos(this.seriesIndex, this.seriesCount);
@@ -1199,10 +1236,23 @@ export class CandlestickChart implements PanZoomable {
     if (e.button !== 0 || this.pz.didDrag()) return;
     const { lx, ly } = this.layoutPoint(e);
     const candle = this.hitTest(lx, ly);
-    // The chart has no built-in click behavior of its own, so the hook's
-    // `defaultAction` is a no-op; the event fires regardless, per the contract.
-    runMouseHook(this.cfg.mouse.onCandleClick, candle, e, this.cssPoint(e), () => {});
-    this.emitter.emit('click', { candle, event: e });
+    const px = this.cssPoint(e);
+    // One dispatch covers both surfaces: the standard cancellable `click` and
+    // this chart's `onCandleClick` hook, in that order. The chart has no
+    // built-in click behavior, so the hook's `defaultAction` is a no-op.
+    if (
+      !this.allows('click', { meta: candle, px, button: e.button, candle, event: e }, { native: e })
+    ) {
+      return;
+    }
+    runMouseHook(this.cfg.mouse.onCandleClick, candle, e, px, () => {});
+  };
+
+  private onDoubleClick = (e: MouseEvent): void => {
+    const { lx, ly } = this.layoutPoint(e);
+    const candle = this.hitTest(lx, ly);
+    const px = this.cssPoint(e);
+    this.emit('dblclick', { meta: candle, px, button: e.button }, { native: e });
   };
 
   private onPointerMove = (e: PointerEvent): void => {
@@ -1210,6 +1260,9 @@ export class CandlestickChart implements PanZoomable {
     this.pointerPx = p;
 
     if (this.dragging) {
+      const px = this.cssPoint(e);
+      this.allowsDrag('move', 'slider', px, px.x - this.lastDragPx.x, px.y - this.lastDragPx.y, e);
+      this.lastDragPx = px;
       this.seekTo(p, e);
       e.stopImmediatePropagation();
       return;
@@ -1230,7 +1283,7 @@ export class CandlestickChart implements PanZoomable {
     const id = hit?.candleId ?? -1;
     if (id !== this.lastEmittedHover) {
       this.lastEmittedHover = id;
-      this.emitter.emit('hover', { candle: hit });
+      this.emit('hover', { candle: hit }, { native: e, cancelable: false });
     }
   };
 
@@ -1240,7 +1293,7 @@ export class CandlestickChart implements PanZoomable {
     this.hovered = null;
     if (this.lastEmittedHover !== -1) {
       this.lastEmittedHover = -1;
-      this.emitter.emit('hover', { candle: null });
+      this.emit('hover', { candle: null }, { cancelable: false });
     }
     if (this.chrome.currentValue.show) this.overlayDirty = true;
   };
@@ -1250,17 +1303,18 @@ export class CandlestickChart implements PanZoomable {
     return hitCandle(this.metas, this.layout?.step ?? 0, lx, ly);
   }
 
-  dispose(): void {
+  override dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
+    this.canvas.removeEventListener('dblclick', this.onDoubleClick);
     this.ro?.disconnect();
     this.pz.detach();
     this.renderer?.dispose();
-    this.emitter.clear();
+    super.dispose();
     this.legend?.dispose();
     this.title?.dispose();
     this.fps?.dispose();

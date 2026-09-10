@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { BarChartConfig, DataSet, WindDataSet, WindRoseChartConfig } from '../../src/index.js';
+import type {
+  BarChartConfig,
+  ChartElement,
+  DataSet,
+  WindDataSet,
+  WindRoseChartConfig,
+} from '../../src/index.js';
 import type {
   BarChart as BarChartComponent,
   WindRoseChart as WindRoseChartComponent,
@@ -19,6 +25,8 @@ import type {
  *    applied, not swallowed as "the instance was just created with it".
  * 2. Charts that emit during their first layout pass (the wind rose's
  *    initial `highlight`) reach handlers registered by the binding.
+ * 3. The standard event props (`onClick`) and the `layers` prop cross the
+ *    same boundary — the surface added when the charts gained the kernel.
  */
 export interface HarnessBindings {
   BarChart: typeof BarChartComponent;
@@ -57,7 +65,19 @@ const roseData: WindDataSet = {
   })),
 };
 
+// Module scope so the reference is stable: `layers` is compared by identity,
+// exactly like `data`.
+const barLayers: ChartElement[] = [
+  { kind: 'line', from: [0, 0.5], to: [1, 0.5], stroke: '#ff3b6b', lineWidth: 3 },
+];
+
 const paneStyle = { width: '900px', height: '260px' } as const;
+
+/** Merge into the probe without dropping fields another handler already set. */
+function patchProbe(patch: Partial<import('./react-probe.js').ReactProbe>): void {
+  const probe = window.__scReact ?? { ready: false, backend: null, highlights: 0, clicks: [] };
+  window.__scReact = { ...probe, ...patch };
+}
 
 function Harness({ BarChart, WindRoseChart }: HarnessBindings) {
   const [barData, setBarData] = useState(initialBarData);
@@ -75,14 +95,20 @@ function Harness({ BarChart, WindRoseChart }: HarnessBindings) {
           data={barData}
           options={barOptions}
           style={paneStyle}
+          layers={barLayers}
+          onClick={(e) => {
+            const probe = window.__scReact;
+            const label = e.meta ? String(e.meta.xValue) : null;
+            patchProbe({ clicks: [...(probe?.clicks ?? []), label] });
+          }}
           ref={(instance) => {
             if (!instance) return;
             instance.whenReady().then(() => {
-              window.__scReact = {
-                ...(window.__scReact ?? { highlights: 0 }),
+              patchProbe({
                 ready: true,
                 backend: instance.backend,
-              };
+                layerInk: () => layerInk('#bar-host'),
+              });
             });
           }}
         />
@@ -95,8 +121,7 @@ function Harness({ BarChart, WindRoseChart }: HarnessBindings) {
           // Contract 2: emitted during the rose's first layout pass, before
           // any interaction — a binding that subscribes a render late misses it.
           onHighlight={() => {
-            const probe = window.__scReact ?? { ready: false, backend: null, highlights: 0 };
-            window.__scReact = { ...probe, highlights: probe.highlights + 1 };
+            patchProbe({ highlights: (window.__scReact?.highlights ?? 0) + 1 });
           }}
         />
       </div>
@@ -104,9 +129,22 @@ function Harness({ BarChart, WindRoseChart }: HarnessBindings) {
   );
 }
 
+/** Painted share of the last canvas in `selector` — the kernel's layer canvas. */
+function layerInk(selector: string): number {
+  const canvases = [...document.querySelectorAll<HTMLCanvasElement>(`${selector} canvas`)];
+  const c = canvases[canvases.length - 1];
+  if (!c) return -1;
+  const ctx = c.getContext('2d');
+  if (!ctx) return -1;
+  const { data } = ctx.getImageData(0, 0, c.width, c.height);
+  let painted = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i]! > 8) painted++;
+  return painted / (c.width * c.height);
+}
+
 /** Mounts the harness app into `host` with the given bindings module. */
 export function mountReactHarness(host: HTMLElement, bindings: HarnessBindings): void {
-  window.__scReact = { ready: false, backend: null, highlights: 0 };
+  window.__scReact = { ready: false, backend: null, highlights: 0, clicks: [] };
   createRoot(host).render(
     <Harness BarChart={bindings.BarChart} WindRoseChart={bindings.WindRoseChart} />,
   );

@@ -1,3 +1,5 @@
+import type { ChartEvents, ChartFrameInfo } from '../../core/chart/kernel.js';
+import { ChartKernel } from '../../core/chart/kernel.js';
 // Reuse the bar chart's chrome infrastructure verbatim (axes/legend/margins/fps).
 import { axisMargins, marginsToPlotRect, resolveChrome } from '../../core/chrome/chrome.js';
 import type { ResolvedChrome } from '../../core/chrome/chrome.js';
@@ -13,7 +15,6 @@ import { mulberry32 } from '../../core/particles/rng.js';
 import { pickRenderer } from '../../core/render/pick.js';
 import type { FrameUniforms, RGBA, Renderer } from '../../core/render/types.js';
 import { DEFAULT_PALETTE, parseColor } from '../../core/util/color.js';
-import { Emitter } from '../../core/util/emitter.js';
 import { PanZoomController } from '../../core/view/controller.js';
 import { ZoomControls } from '../../core/view/controls.js';
 import {
@@ -92,7 +93,19 @@ function resolve(cfg: LineChartConfig): Resolved {
   };
 }
 
-type Events = { hover: HoverPayload; seriesFocus: SeriesFocusPayload };
+// A type alias, not an interface: only the former carries the implicit index
+// signature that `ChartKernel`'s `Record<string, object>` constraint needs.
+/** Events this chart adds on top of the standard set every chart inherits. */
+type LineExtraEvents = {
+  hover: HoverPayload;
+  seriesFocus: SeriesFocusPayload;
+};
+
+/** Items the line chart's data methods accept, as reported by the `data*` events. */
+type LineItem = Point | PointPatch | PointRef;
+
+/** Everything {@link LineChart.on} accepts: the standard events plus the two above. */
+export type LineChartEvents = ChartEvents<LineMeta, LineItem, LineExtraEvents>;
 
 /** How grains enter on a data build: fresh pour vs. morph from the prior state. */
 type BuildMode = 'pour' | 'morph';
@@ -142,7 +155,10 @@ function clamp01(v: number): number {
  * config surface and lifecycle, with a line style (`none`/`straight`/`spline`)
  * in place of the bar border.
  */
-export class LineChart implements PanZoomable {
+export class LineChart
+  extends ChartKernel<LineMeta, LineItem, LineExtraEvents>
+  implements PanZoomable
+{
   private el: HTMLElement;
   private canvas: HTMLCanvasElement;
   private cfg: Resolved;
@@ -151,7 +167,6 @@ export class LineChart implements PanZoomable {
   private metas: LineMeta[] = [];
   /** Current dataset (source of truth for {@link update}/{@link add}/{@link remove}). */
   private data: DataSet = { points: [] };
-  private emitter = new Emitter<Events>();
 
   /** Reveal timing regime: fresh pour vs. in-place morph (line stays solid). */
   private revealMode: BuildMode = 'pour';
@@ -201,6 +216,7 @@ export class LineChart implements PanZoomable {
   private ready: Promise<void>;
 
   constructor(el: HTMLElement, config: LineChartConfig) {
+    super();
     this.el = el;
     this.data = config.data;
     this.cfg = resolve(config);
@@ -212,6 +228,7 @@ export class LineChart implements PanZoomable {
       this.pzCfg,
       () => this.plotRect,
       () => this.onViewChange(),
+      this.panZoomHooks(),
     );
     this.canvas = document.createElement('canvas');
     this.canvas.style.width = '100%';
@@ -221,11 +238,11 @@ export class LineChart implements PanZoomable {
 
     if (this.chrome.any || this.lineStyle.enabled) this.mountChrome();
     if (this.fpsCfg.show) {
-      this.ensureRelative();
+      this.ensureRelative(this.el);
       this.fps = new FpsMeter(this.el, this.fpsCfg.position, this.fpsCfg.color);
     }
     if (this.pzCfg.enabled) {
-      this.ensureRelative();
+      this.ensureRelative(this.el);
       this.pz.attach(this.canvas);
       if (this.pzCfg.controls.show) {
         this.zoomControls = new ZoomControls(this.el, this, this.pzCfg.controls);
@@ -240,12 +257,8 @@ export class LineChart implements PanZoomable {
     this.drawOverlay();
   }
 
-  private ensureRelative(): void {
-    if (getComputedStyle(this.el).position === 'static') this.el.style.position = 'relative';
-  }
-
   private mountChrome(): void {
-    this.ensureRelative();
+    this.ensureRelative(this.el);
 
     const oc = document.createElement('canvas');
     oc.style.position = 'absolute';
@@ -273,8 +286,16 @@ export class LineChart implements PanZoomable {
     return this.renderer?.kind ?? null;
   }
 
-  on<K extends keyof Events>(event: K, fn: (p: Events[K]) => void): () => void {
-    return this.emitter.on(event, fn);
+  /** Geometry the shared drawing layers project through (see {@link ChartKernel}). */
+  protected chartFrame(): ChartFrameInfo {
+    return {
+      host: this.el,
+      canvas: this.canvas,
+      rect: this.plotRect,
+      dpr: this.dpr,
+      view: this.view,
+      now: this.nowSeconds(),
+    };
   }
 
   private async boot(data: DataSet, backend: LineChartConfig['backend']): Promise<void> {
@@ -285,6 +306,8 @@ export class LineChart implements PanZoomable {
 
     this.canvas.addEventListener('pointermove', this.onPointerMove);
     this.canvas.addEventListener('pointerleave', this.onPointerLeave);
+    this.canvas.addEventListener('pointerup', this.onPointerUp);
+    this.canvas.addEventListener('dblclick', this.onDoubleClick);
     this.ro = new ResizeObserver(() => this.resizeCanvas());
     this.ro.observe(this.el);
 
@@ -330,7 +353,7 @@ export class LineChart implements PanZoomable {
     if (index === this.focusedSeries) return;
     this.focusedSeries = index;
     this.legend?.setFocus(index);
-    this.emitter.emit('seriesFocus', { index });
+    this.emit('seriesFocus', { index }, { cancelable: false });
   }
 
   /**
@@ -733,9 +756,11 @@ export class LineChart implements PanZoomable {
   update(patches: PointPatch[]): void;
   update(arg: DataSet | PointPatch[]): void {
     if (this.disposed) return;
-    const next: DataSet = Array.isArray(arg)
-      ? { ...this.data, points: patchPoints(this.data.points, arg) }
-      : arg;
+    const patches = Array.isArray(arg) ? arg : null;
+    if (!this.allowsData('dataUpdate', patches ? 'update' : 'replace', patches ?? [])) return;
+    const next: DataSet = patches
+      ? { ...this.data, points: patchPoints(this.data.points, patches) }
+      : (arg as DataSet);
     this.buildGrains(next, 'morph');
   }
 
@@ -743,6 +768,7 @@ export class LineChart implements PanZoomable {
   add(points: Point | Point[]): void {
     if (this.disposed) return;
     const add = Array.isArray(points) ? points : [points];
+    if (!this.allowsData('dataAdd', 'add', add)) return;
     this.buildGrains({ ...this.data, points: appendPoints(this.data.points, add) }, 'morph');
   }
 
@@ -750,6 +776,7 @@ export class LineChart implements PanZoomable {
   remove(refs: PointRef | PointRef[]): void {
     if (this.disposed) return;
     const list = Array.isArray(refs) ? refs : [refs];
+    if (!this.allowsData('dataRemove', 'remove', list)) return;
     this.buildGrains({ ...this.data, points: removePoints(this.data.points, list) }, 'morph');
   }
 
@@ -818,6 +845,8 @@ export class LineChart implements PanZoomable {
     } else if (this.overlayDirty) {
       this.drawOverlay(now);
     }
+    // Caller-owned layers repaint last, on top of the finished frame.
+    this.afterDraw();
     this.raf = requestAnimationFrame(this.loop);
   };
 
@@ -879,7 +908,14 @@ export class LineChart implements PanZoomable {
     };
   }
 
-  private onPointerMove = (e: PointerEvent): void => {
+  /** Pointer position in CSS px, relative to the chart element. */
+  private cssPoint(e: { clientX: number; clientY: number }): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  /** Point under the pointer, inverting the plot rect and pan/zoom transform. */
+  private hitAt(e: { clientX: number; clientY: number }): LineMeta | null {
     const rect = this.canvas.getBoundingClientRect();
     const cx = (e.clientX - rect.left) / rect.width;
     const cy = 1 - (e.clientY - rect.top) / rect.height;
@@ -888,19 +924,19 @@ export class LineChart implements PanZoomable {
     const plx = (cx - x0) / (x1 - x0);
     const ply = (cy - y0) / (y1 - y0);
     const v = this.view;
-    const lx = (plx - v.offset[0]) / v.scale[0];
-    const ly = (ply - v.offset[1]) / v.scale[1];
-    const hit = this.hitTest(lx, ly);
+    return this.hitTest((plx - v.offset[0]) / v.scale[0], (ply - v.offset[1]) / v.scale[1]);
+  }
+
+  private onPointerMove = (e: PointerEvent): void => {
+    const hit = this.hitAt(e);
     const id = hit?.pointId ?? -1;
-    this.pointerPx = {
-      x: (e.clientX - rect.left) * this.dpr,
-      y: (e.clientY - rect.top) * this.dpr,
-    };
+    const px = this.cssPoint(e);
+    this.pointerPx = { x: px.x * this.dpr, y: px.y * this.dpr };
     this.hoveredSeriesIndex = hit?.seriesIndex ?? -1;
     if (id !== this.hoveredPointId) {
       this.hoveredPointId = id;
       this.hovered = hit;
-      this.emitter.emit('hover', { point: hit });
+      this.emit('hover', { point: hit }, { native: e, cancelable: false });
     }
     // Mark dirty rather than drawing here: pointer events fire faster than the
     // display refreshes, and each redraw repaints the whole overlay.
@@ -913,11 +949,24 @@ export class LineChart implements PanZoomable {
     if (this.hoveredPointId !== -1) {
       this.hoveredPointId = -1;
       this.hovered = null;
-      this.emitter.emit('hover', { point: null });
+      this.emit('hover', { point: null }, { cancelable: false });
     }
     // Mark dirty rather than drawing here: pointer events fire faster than the
     // display refreshes, and each redraw repaints the whole overlay.
     if (this.overlay && this.chrome.currentValue.show) this.overlayDirty = true;
+  };
+
+  /**
+   * Click fires on pointer-up rather than -down so a drag-to-pan that ends over
+   * a point is not also reported as a click on it.
+   */
+  private onPointerUp = (e: PointerEvent): void => {
+    if (this.pz.didDrag()) return;
+    this.dispatchClick('click', this.hitAt(e), e, this.cssPoint(e), undefined, () => {});
+  };
+
+  private onDoubleClick = (e: MouseEvent): void => {
+    this.dispatchClick('dblclick', this.hitAt(e), e, this.cssPoint(e), undefined, () => {});
   };
 
   /**
@@ -975,15 +1024,17 @@ export class LineChart implements PanZoomable {
     return best;
   }
 
-  dispose(): void {
+  override dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
+    this.canvas.removeEventListener('pointerup', this.onPointerUp);
+    this.canvas.removeEventListener('dblclick', this.onDoubleClick);
     this.ro?.disconnect();
     this.pz.detach();
     this.renderer?.dispose();
-    this.emitter.clear();
+    super.dispose();
     this.legend?.dispose();
     this.title?.dispose();
     this.fps?.dispose();

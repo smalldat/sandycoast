@@ -1,3 +1,5 @@
+import type { ChartEvents, ChartFrameInfo } from '../../core/chart/kernel.js';
+import { ChartKernel } from '../../core/chart/kernel.js';
 // Reuse the bar chart's chrome infrastructure verbatim (axes/legend/margins/fps).
 import { axisMargins, marginsToPlotRect, resolveChrome } from '../../core/chrome/chrome.js';
 import type { ResolvedChrome } from '../../core/chrome/chrome.js';
@@ -12,7 +14,6 @@ import { mulberry32 } from '../../core/particles/rng.js';
 import { pickRenderer } from '../../core/render/pick.js';
 import type { FrameUniforms, RGBA, Renderer } from '../../core/render/types.js';
 import { DEFAULT_PALETTE, parseColor } from '../../core/util/color.js';
-import { Emitter } from '../../core/util/emitter.js';
 import { PanZoomController } from '../../core/view/controller.js';
 import { ZoomControls } from '../../core/view/controls.js';
 import {
@@ -92,7 +93,19 @@ function resolve(cfg: ScatterChartConfig): Resolved {
   };
 }
 
-type Events = { hover: HoverPayload; seriesFocus: SeriesFocusPayload };
+// A type alias, not an interface: only the former carries the implicit index
+// signature that `ChartKernel`'s `Record<string, object>` constraint needs.
+/** Events this chart adds on top of the standard set every chart inherits. */
+type ScatterExtraEvents = {
+  hover: HoverPayload;
+  seriesFocus: SeriesFocusPayload;
+};
+
+/** Items the scatter chart's data methods accept, as reported by the `data*` events. */
+type ScatterItem = MeshPoint | number;
+
+/** Everything {@link ScatterChart.on} accepts: the standard events plus the two above. */
+export type ScatterChartEvents = ChartEvents<ScatterMeta, ScatterItem, ScatterExtraEvents>;
 
 /** How grains enter on a data build: fresh pour vs. morph from the prior state. */
 type BuildMode = 'pour' | 'morph';
@@ -149,7 +162,10 @@ function clamp01(v: number): number {
  * lifecycle, with continuous X/Y positioning (`core/scales`) and an explicit
  * `series` array (no `z` grouping key) in place of the bar/line data model.
  */
-export class ScatterChart implements PanZoomable {
+export class ScatterChart
+  extends ChartKernel<ScatterMeta, ScatterItem, ScatterExtraEvents>
+  implements PanZoomable
+{
   private el: HTMLElement;
   private canvas: HTMLCanvasElement;
   private cfg: Resolved;
@@ -158,7 +174,6 @@ export class ScatterChart implements PanZoomable {
   private metas: ScatterMeta[] = [];
   /** Current dataset (source of truth for {@link update}/{@link add}/{@link remove}). */
   private data: MeshDataSet = { series: [] };
-  private emitter = new Emitter<Events>();
 
   /** Reveal timing regime: fresh pour vs. in-place morph (marker stays solid). */
   private revealMode: BuildMode = 'pour';
@@ -207,6 +222,7 @@ export class ScatterChart implements PanZoomable {
   private ready: Promise<void>;
 
   constructor(el: HTMLElement, config: ScatterChartConfig) {
+    super();
     this.el = el;
     this.data = config.data;
     this.cfg = resolve(config);
@@ -219,6 +235,7 @@ export class ScatterChart implements PanZoomable {
       this.pzCfg,
       () => this.plotRect,
       () => this.onViewChange(),
+      this.panZoomHooks(),
     );
     this.canvas = document.createElement('canvas');
     this.canvas.style.width = '100%';
@@ -228,11 +245,11 @@ export class ScatterChart implements PanZoomable {
 
     if (this.chrome.any || this.markerStyle.enabled || this.approx.enabled) this.mountChrome();
     if (this.fpsCfg.show) {
-      this.ensureRelative();
+      this.ensureRelative(this.el);
       this.fps = new FpsMeter(this.el, this.fpsCfg.position, this.fpsCfg.color);
     }
     if (this.pzCfg.enabled) {
-      this.ensureRelative();
+      this.ensureRelative(this.el);
       this.pz.attach(this.canvas);
       if (this.pzCfg.controls.show) {
         this.zoomControls = new ZoomControls(this.el, this, this.pzCfg.controls);
@@ -247,12 +264,8 @@ export class ScatterChart implements PanZoomable {
     this.drawOverlay();
   }
 
-  private ensureRelative(): void {
-    if (getComputedStyle(this.el).position === 'static') this.el.style.position = 'relative';
-  }
-
   private mountChrome(): void {
-    this.ensureRelative();
+    this.ensureRelative(this.el);
 
     const oc = document.createElement('canvas');
     oc.style.position = 'absolute';
@@ -280,8 +293,16 @@ export class ScatterChart implements PanZoomable {
     return this.renderer?.kind ?? null;
   }
 
-  on<K extends keyof Events>(event: K, fn: (p: Events[K]) => void): () => void {
-    return this.emitter.on(event, fn);
+  /** Geometry the shared drawing layers project through (see {@link ChartKernel}). */
+  protected chartFrame(): ChartFrameInfo {
+    return {
+      host: this.el,
+      canvas: this.canvas,
+      rect: this.plotRect,
+      dpr: this.dpr,
+      view: this.view,
+      now: this.nowSeconds(),
+    };
   }
 
   private async boot(data: MeshDataSet, backend: ScatterChartConfig['backend']): Promise<void> {
@@ -292,6 +313,8 @@ export class ScatterChart implements PanZoomable {
 
     this.canvas.addEventListener('pointermove', this.onPointerMove);
     this.canvas.addEventListener('pointerleave', this.onPointerLeave);
+    this.canvas.addEventListener('pointerup', this.onPointerUp);
+    this.canvas.addEventListener('dblclick', this.onDoubleClick);
     this.ro = new ResizeObserver(() => this.resizeCanvas());
     this.ro.observe(this.el);
 
@@ -337,7 +360,7 @@ export class ScatterChart implements PanZoomable {
     if (index === this.focusedSeries) return;
     this.focusedSeries = index;
     this.legend?.setFocus(index);
-    this.emitter.emit('seriesFocus', { index });
+    this.emit('seriesFocus', { index }, { cancelable: false });
   }
 
   /**
@@ -722,6 +745,7 @@ export class ScatterChart implements PanZoomable {
   /** Replace the whole dataset; grains + marker tween smoothly rather than re-pouring. */
   update(data: MeshDataSet): void {
     if (this.disposed) return;
+    if (!this.allowsData('dataUpdate', 'replace', [])) return;
     this.buildGrains(data, 'morph');
   }
 
@@ -732,6 +756,7 @@ export class ScatterChart implements PanZoomable {
   add(points: MeshPoint | MeshPoint[], seriesIndex = 0): void {
     if (this.disposed) return;
     const list = Array.isArray(points) ? points : [points];
+    if (!this.allowsData('dataAdd', 'add', list)) return;
     const series = this.data.series;
     const idx = Math.min(Math.max(0, seriesIndex), series.length);
     const nextSeries =
@@ -751,6 +776,9 @@ export class ScatterChart implements PanZoomable {
     if (this.disposed) return;
     const series = this.data.series;
     if (seriesIndex < 0 || seriesIndex >= series.length) return;
+    if (!this.allowsData('dataRemove', 'remove', Array.isArray(indices) ? indices : [indices])) {
+      return;
+    }
     const points = series[seriesIndex]!.points;
     const drop = new Set(
       (Array.isArray(indices) ? indices : [indices]).map((i) => (i < 0 ? points.length + i : i)),
@@ -829,6 +857,8 @@ export class ScatterChart implements PanZoomable {
     } else if (this.overlayDirty) {
       this.drawOverlay(now);
     }
+    // Caller-owned layers repaint last, on top of the finished frame.
+    this.afterDraw();
     this.raf = requestAnimationFrame(this.loop);
   };
 
@@ -884,7 +914,14 @@ export class ScatterChart implements PanZoomable {
     };
   }
 
-  private onPointerMove = (e: PointerEvent): void => {
+  /** Pointer position in CSS px, relative to the chart element. */
+  private cssPoint(e: { clientX: number; clientY: number }): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  /** Marker under the pointer, inverting the plot rect and pan/zoom transform. */
+  private hitAt(e: { clientX: number; clientY: number }): ScatterMeta | null {
     const rect = this.canvas.getBoundingClientRect();
     const cx = (e.clientX - rect.left) / rect.width;
     const cy = 1 - (e.clientY - rect.top) / rect.height;
@@ -892,18 +929,18 @@ export class ScatterChart implements PanZoomable {
     const plx = (cx - x0) / (x1 - x0);
     const ply = (cy - y0) / (y1 - y0);
     const v = this.view;
-    const lx = (plx - v.offset[0]) / v.scale[0];
-    const ly = (ply - v.offset[1]) / v.scale[1];
-    const hit = this.hitTest(lx, ly);
+    return this.hitTest((plx - v.offset[0]) / v.scale[0], (ply - v.offset[1]) / v.scale[1]);
+  }
+
+  private onPointerMove = (e: PointerEvent): void => {
+    const hit = this.hitAt(e);
     const id = hit?.pointId ?? -1;
-    this.pointerPx = {
-      x: (e.clientX - rect.left) * this.dpr,
-      y: (e.clientY - rect.top) * this.dpr,
-    };
+    const px = this.cssPoint(e);
+    this.pointerPx = { x: px.x * this.dpr, y: px.y * this.dpr };
     if (id !== this.hoveredPointId) {
       this.hoveredPointId = id;
       this.hovered = hit;
-      this.emitter.emit('hover', { point: hit });
+      this.emit('hover', { point: hit }, { native: e, cancelable: false });
     }
     if (this.overlay && this.chrome.currentValue.show) this.overlayDirty = true;
   };
@@ -913,9 +950,22 @@ export class ScatterChart implements PanZoomable {
     if (this.hoveredPointId !== -1) {
       this.hoveredPointId = -1;
       this.hovered = null;
-      this.emitter.emit('hover', { point: null });
+      this.emit('hover', { point: null }, { cancelable: false });
     }
     if (this.overlay && this.chrome.currentValue.show) this.overlayDirty = true;
+  };
+
+  /**
+   * Click fires on pointer-up rather than -down so a drag-to-pan that ends over
+   * a marker is not also reported as a click on it.
+   */
+  private onPointerUp = (e: PointerEvent): void => {
+    if (this.pz.didDrag()) return;
+    this.dispatchClick('click', this.hitAt(e), e, this.cssPoint(e), undefined, () => {});
+  };
+
+  private onDoubleClick = (e: MouseEvent): void => {
+    this.dispatchClick('dblclick', this.hitAt(e), e, this.cssPoint(e), undefined, () => {});
   };
 
   /** Nearest-point hit-test in layout space (within a small radius). */
@@ -935,15 +985,17 @@ export class ScatterChart implements PanZoomable {
     return best;
   }
 
-  dispose(): void {
+  override dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
+    this.canvas.removeEventListener('pointerup', this.onPointerUp);
+    this.canvas.removeEventListener('dblclick', this.onDoubleClick);
     this.ro?.disconnect();
     this.pz.detach();
     this.renderer?.dispose();
-    this.emitter.clear();
+    super.dispose();
     this.legend?.dispose();
     this.title?.dispose();
     this.fps?.dispose();
