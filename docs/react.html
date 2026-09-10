@@ -19,6 +19,7 @@
       <a href="index.html">Overview</a>
       <a href="index.html#install">Install &amp; publish</a>
       <a href="data-model.html">Data model &amp; shared config</a>
+      <a href="events-and-layers.html">Events &amp; custom drawing</a>
     </nav>
     <nav class="nav-group">
       <h4>Visuals</h4>
@@ -55,6 +56,8 @@
       <a href="#shape">Shared prop shape</a>
       <a href="#data-vs-options">data vs. options — what re-renders as what</a>
       <a href="#components">Components</a>
+      <a href="#events">Standard events</a>
+      <a href="#layers">Custom drawing — the layers prop</a>
       <a href="#ref">The ref — imperative access</a>
       <a href="#examples">More examples</a>
     </div>
@@ -107,10 +110,14 @@ npm install @smalldat/sandycoast react react-dom</code></pre>
           <td>That chart's data — the same shape the vanilla constructor takes. See <a href="data-model.html">Data model</a>.</td></tr>
         <tr><td><code>options</code></td><td class="type">Omit&lt;XChartConfig, 'data'&gt;</td>
           <td>Every other config field that chart's doc page lists (style, animation, chrome, pan/zoom, …).</td></tr>
+        <tr><td><code>layers</code></td><td class="type">readonly ChartElement[]</td>
+          <td>Declarative annotations drawn on top of the chart. See <a href="#layers">below</a>.</td></tr>
         <tr><td><code>className</code> / <code>style</code></td><td class="type">string / CSSProperties</td>
           <td>Applied to the chart's container <code>&lt;div&gt;</code>.</td></tr>
-        <tr><td><code>onXxx</code></td><td class="type">(payload) =&gt; void</td>
-          <td>One prop per event that chart's <code>.on(event, fn)</code> supports — see <a href="#components">Components</a> for the list per chart.</td></tr>
+        <tr><td><code>onXxx</code></td><td class="type">(event) =&gt; void</td>
+          <td>One prop per event that chart's <code>.on(event, fn)</code> supports: the nine
+            <a href="#events">standard events</a> every chart has, plus that chart's own — see
+            <a href="#components">Components</a>.</td></tr>
         <tr><td><code>ref</code></td><td class="type">Ref&lt;XChart&gt;</td>
           <td>The underlying vanilla chart instance once mounted. See <a href="#ref">below</a>.</td></tr>
       </tbody>
@@ -137,7 +144,7 @@ npm install @smalldat/sandycoast react react-dom</code></pre>
 
     <h2 id="components">Components</h2>
     <table class="prop-table">
-      <thead><tr><th>Component</th><th><code>data</code> type</th><th>Event props</th><th>Config reference</th></tr></thead>
+      <thead><tr><th>Component</th><th><code>data</code> type</th><th>Chart-specific event props</th><th>Config reference</th></tr></thead>
       <tbody>
         <tr><td><code>BarChart</code></td><td class="type">DataSet</td>
           <td><code>onHover</code>, <code>onSeriesFocus</code></td><td><a href="bar-chart.html">Bar chart →</a></td></tr>
@@ -150,13 +157,65 @@ npm install @smalldat/sandycoast react react-dom</code></pre>
         <tr><td><code>WindRoseChart&lt;Custom&gt;</code></td><td class="type">WindDataSet&lt;Custom&gt;</td>
           <td><code>onHover</code>, <code>onSelect</code>, <code>onHighlight</code></td><td><a href="windrose-chart.html">Wind rose →</a></td></tr>
         <tr><td><code>CandlestickChart</code></td><td class="type">OhlcDataSet</td>
-          <td><code>onHover</code>, <code>onClick</code>, <code>onSeriesChange</code>, <code>onSeriesFocus</code></td><td><a href="candlestick-chart.html">Candlestick chart →</a></td></tr>
+          <td><code>onHover</code>, <code>onSeriesChange</code>, <code>onSeriesFocus</code></td><td><a href="candlestick-chart.html">Candlestick chart →</a></td></tr>
       </tbody>
     </table>
-    <p>Each event prop's payload is exactly what the matching vanilla <code>.on(event, fn)</code> passes —
-      see that chart's own <strong>Events</strong> section for the payload shape.
-      <code>WindRoseChart</code> is generic over the same <code>Custom</code> per-observation payload type
-      as the vanilla class; it defaults to <code>unknown</code>.</p>
+    <p>Those are <em>in addition to</em> the <a href="#events">standard event props</a>, which all six
+      accept. Each payload is exactly what the matching vanilla <code>.on(event, fn)</code> passes — see
+      that chart's own <strong>Events</strong> section for the shape. <code>WindRoseChart</code> is generic
+      over the same <code>Custom</code> per-observation payload type as the vanilla class; it defaults to
+      <code>unknown</code>.</p>
+
+    <h2 id="events">Standard events</h2>
+    <p>Every component accepts a prop for each of the nine events every chart shares. The handler receives
+      the same object the vanilla listener does — the payload's fields plus <code>preventDefault()</code>
+      — and cancelling <strong>suppresses the chart's built-in reaction</strong>. That is worth calling
+      out, because React's own synthetic <code>onClick</code> does not work that way: here the veto is the
+      point.</p>
+    <table class="prop-table">
+      <thead><tr><th>Prop</th><th>Payload fields</th><th>Cancel?</th></tr></thead>
+      <tbody>
+        <tr><td><code>onClick</code> / <code>onDblClick</code></td><td class="type">meta, px, button</td><td>yes</td></tr>
+        <tr><td><code>onDrag</code></td><td class="type">phase, target, dx, dy, px</td><td>on <code>'start'</code></td></tr>
+        <tr><td><code>onPan</code></td><td class="type">offset, delta</td><td>yes</td></tr>
+        <tr><td><code>onZoom</code></td><td class="type">scale, factor, center</td><td>yes</td></tr>
+        <tr><td><code>onDataAdd</code> / <code>onDataUpdate</code> / <code>onDataRemove</code></td>
+          <td class="type">action, items</td><td>yes — fires <em>before</em> the change applies</td></tr>
+        <tr><td><code>onDrawFinished</code></td><td class="type">now, frame</td><td>no</td></tr>
+      </tbody>
+    </table>
+    <pre><code>&lt;LineChart
+  data={data}
+  options={options}
+  onClick={({ meta }) => <span class="tok-fn">setSelected</span>(meta?.xValue ?? <span class="tok-key">null</span>)}
+  <span class="tok-com">// A read-only chart: the user can look, but not move the view.</span>
+  onPan={(e) => e.<span class="tok-fn">preventDefault</span>()}
+  onZoom={(e) => e.<span class="tok-fn">preventDefault</span>()}
+/&gt;</code></pre>
+    <div class="note warn">
+      <strong><code>onDrawFinished</code> fires ~60×/second.</strong> A handler that calls
+      <code>setState</code> will re-render your component on every animation frame. Write to a
+      <code>ref</code> instead, or don't pass the prop.
+    </div>
+    <p><code>CandlestickChart</code>'s <code>onClick</code> carries its original
+      <code>candle</code> and <code>event</code> fields alongside the standard <code>meta</code>,
+      <code>px</code> and <code>button</code>, so handlers written before the standard events keep
+      working. Full reference: <a href="events-and-layers.html">Events &amp; custom drawing</a>.</p>
+
+    <h2 id="layers">Custom drawing — the <code>layers</code> prop</h2>
+    <p>Pass declarative annotations and the component keeps them in sync with the chart. Positions default
+      to data space, so they track the marks under pan and zoom.</p>
+    <pre><code><span class="tok-com">// Hoisted: `layers` is compared by reference, exactly like `data`.</span>
+<span class="tok-key">const</span> layers: ChartElement[] = [
+  { kind: <span class="tok-str">'rect'</span>, at: [<span class="tok-num">0</span>, <span class="tok-num">0.6</span>], width: <span class="tok-num">1</span>, height: <span class="tok-num">0.15</span>, fill: <span class="tok-str">'rgba(56,189,248,0.12)'</span> },
+  { kind: <span class="tok-str">'line'</span>, from: [<span class="tok-num">0</span>, <span class="tok-num">0.75</span>], to: [<span class="tok-num">1</span>, <span class="tok-num">0.75</span>], stroke: <span class="tok-str">'#38bdf8'</span>, lineDash: [<span class="tok-num">4</span>, <span class="tok-num">4</span>] },
+];
+
+&lt;BarChart data={data} layers={layers} style={{ height: <span class="tok-num">360</span> }} /&gt;</code></pre>
+    <p>Only the elements this prop added are removed when it changes, so layers you add imperatively
+      through the <a href="#ref">ref</a> (<code>chart.addLayer(…)</code>) are left alone. For the element
+      kinds, coordinate spaces and the raw per-frame callback, see
+      <a href="events-and-layers.html#elements">Events &amp; custom drawing</a>.</p>
 
     <h2 id="ref">The ref — imperative access</h2>
     <p>A <code>ref</code> on any of these components resolves to the underlying chart instance — the exact

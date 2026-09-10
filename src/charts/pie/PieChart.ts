@@ -1,3 +1,5 @@
+import type { ChartEvents, ChartFrameInfo } from '../../core/chart/kernel.js';
+import { ChartKernel } from '../../core/chart/kernel.js';
 // Reuse the bar chart's chrome infrastructure verbatim (legend/title/margins/fps).
 import {
   type Margins,
@@ -19,7 +21,6 @@ import { mulberry32 } from '../../core/particles/rng.js';
 import { pickRenderer } from '../../core/render/pick.js';
 import type { FrameUniforms, RGBA, Renderer } from '../../core/render/types.js';
 import { DEFAULT_PALETTE, parseColor } from '../../core/util/color.js';
-import { Emitter } from '../../core/util/emitter.js';
 import { type PieLayout, type PieLayoutOptions, hitSlice, layoutPie } from './layout.js';
 import { PieOverlay } from './overlay.js';
 import { type ResolvedPieStyle, resolvePieStyle, revealFactor } from './pieStyle.js';
@@ -114,11 +115,20 @@ function resolve(cfg: PieChartConfig): Resolved {
   };
 }
 
-type Events = {
+// A type alias, not an interface: only the former carries the implicit index
+// signature that `ChartKernel`'s `Record<string, object>` constraint needs.
+/** Events this chart adds on top of the standard set every chart inherits. */
+type PieExtraEvents = {
   hover: HoverPayload;
   seriesChange: SeriesChangePayload;
   seriesFocus: SeriesFocusPayload;
 };
+
+/** Items the pie chart's data methods accept, as reported by the `data*` events. */
+type PieItem = Point | PointPatch | PointRef;
+
+/** Everything {@link PieChart.on} accepts: the standard events plus the three above. */
+export type PieChartEvents = ChartEvents<SliceMeta, PieItem, PieExtraEvents>;
 
 /** How grains enter on a build: fresh pour vs. morph from the prior state. */
 type BuildMode = 'pour' | 'morph';
@@ -179,7 +189,7 @@ function clamp01(v: number): number {
  *   true circle at any host aspect ratio;
  * - `innerRadius` cuts the middle out, turning the pie into a donut.
  */
-export class PieChart {
+export class PieChart extends ChartKernel<SliceMeta, PieItem, PieExtraEvents> {
   private el: HTMLElement;
   private canvas: HTMLCanvasElement;
   private cfg: Resolved;
@@ -188,7 +198,6 @@ export class PieChart {
   private metas: SliceMeta[] = [];
   /** Current dataset (source of truth for {@link update}/{@link add}/{@link remove}). */
   private data: DataSet = { points: [] };
-  private emitter = new Emitter<Events>();
 
   /** Reveal timing regime: fresh pour vs. in-place morph (wedges stay solid). */
   private revealMode: BuildMode = 'pour';
@@ -241,6 +250,8 @@ export class PieChart {
   /** True while the user drags the handle (it then tracks the pointer exactly). */
   private dragging = false;
   private dragPointerId = -1;
+  /** Where the live drag last was, in CSS px, for the `drag` event's delta. */
+  private lastDragPx = { x: 0, y: 0 };
 
   private dpr = 1;
   private ro: ResizeObserver | null = null;
@@ -248,6 +259,7 @@ export class PieChart {
   private ready: Promise<void>;
 
   constructor(el: HTMLElement, config: PieChartConfig) {
+    super();
     this.el = el;
     // Seat data synchronously so getData() is valid before the async boot runs
     // buildGrains(); otherwise a rebuild firing mid-boot captures empty data.
@@ -268,7 +280,7 @@ export class PieChart {
 
     this.mountChrome();
     if (this.fpsCfg.show) {
-      this.ensureRelative();
+      this.ensureRelative(this.el);
       this.fps = new FpsMeter(this.el, this.fpsCfg.position, this.fpsCfg.color);
     }
 
@@ -276,16 +288,12 @@ export class PieChart {
   }
 
   /** Make the host a positioning context so overlays anchor to it. */
-  private ensureRelative(): void {
-    if (getComputedStyle(this.el).position === 'static') this.el.style.position = 'relative';
-  }
-
   /**
    * Create the overlay canvas + DOM legend/title layers. Unlike the bar chart
    * the overlay is always mounted: the slider lives on it.
    */
   private mountChrome(): void {
-    this.ensureRelative();
+    this.ensureRelative(this.el);
 
     const oc = document.createElement('canvas');
     oc.style.position = 'absolute';
@@ -315,8 +323,20 @@ export class PieChart {
     return this.renderer?.kind ?? null;
   }
 
-  on<K extends keyof Events>(event: K, fn: (p: Events[K]) => void): () => void {
-    return this.emitter.on(event, fn);
+  /**
+   * Geometry the shared drawing layers project through (see {@link ChartKernel}).
+   * The rect is the **disc**, not the plot box, so a layer's `'data'` coordinates
+   * line up with the slice metas.
+   */
+  protected chartFrame(): ChartFrameInfo {
+    return {
+      host: this.el,
+      canvas: this.canvas,
+      rect: this.discRect,
+      dpr: this.dpr,
+      view: this.identityView,
+      now: this.nowSeconds(),
+    };
   }
 
   private async boot(data: DataSet, backend: PieChartConfig['backend']): Promise<void> {
@@ -331,6 +351,7 @@ export class PieChart {
     this.canvas.addEventListener('pointerdown', this.onPointerDown);
     this.canvas.addEventListener('pointerup', this.onPointerUp);
     this.canvas.addEventListener('pointercancel', this.onPointerUp);
+    this.canvas.addEventListener('dblclick', this.onDoubleClick);
     this.ro = new ResizeObserver(() => this.resizeCanvas());
     this.ro.observe(this.el);
 
@@ -381,7 +402,7 @@ export class PieChart {
     if (index === this.focusedSlice) return;
     this.focusedSlice = index;
     this.legend?.setFocus(index);
-    this.emitter.emit('seriesFocus', { index });
+    this.emit('seriesFocus', { index }, { cancelable: false });
   }
 
   /**
@@ -770,7 +791,7 @@ export class PieChart {
     if (next === this.seriesIndex) return;
     this.seriesIndex = next;
     this.buildGrains(this.data, 'morph');
-    this.emitter.emit('seriesChange', {
+    this.emit('seriesChange', {
       index: this.seriesIndex,
       key: this.layout?.series[this.seriesIndex],
     });
@@ -780,7 +801,7 @@ export class PieChart {
   setTitle(text: string): void {
     if (!this.title) {
       if (!text) return;
-      this.ensureRelative();
+      this.ensureRelative(this.el);
       this.title = new Title(this.el, { ...this.chrome.title, show: true, text });
     }
     this.chrome.title = { ...this.chrome.title, text, show: text.length > 0 };
@@ -799,9 +820,11 @@ export class PieChart {
   update(patches: PointPatch[]): void;
   update(arg: DataSet | PointPatch[]): void {
     if (this.disposed) return;
-    const next: DataSet = Array.isArray(arg)
-      ? { ...this.data, points: patchPoints(this.data.points, arg) }
-      : arg;
+    const patches = Array.isArray(arg) ? arg : null;
+    if (!this.allowsData('dataUpdate', patches ? 'update' : 'replace', patches ?? [])) return;
+    const next: DataSet = patches
+      ? { ...this.data, points: patchPoints(this.data.points, patches) }
+      : (arg as DataSet);
     this.buildGrains(next, 'morph');
   }
 
@@ -809,6 +832,7 @@ export class PieChart {
   add(points: Point | Point[]): void {
     if (this.disposed) return;
     const add = Array.isArray(points) ? points : [points];
+    if (!this.allowsData('dataAdd', 'add', add)) return;
     this.buildGrains({ ...this.data, points: appendPoints(this.data.points, add) }, 'morph');
   }
 
@@ -816,6 +840,7 @@ export class PieChart {
   remove(refs: PointRef | PointRef[]): void {
     if (this.disposed) return;
     const list = Array.isArray(refs) ? refs : [refs];
+    if (!this.allowsData('dataRemove', 'remove', list)) return;
     this.buildGrains({ ...this.data, points: removePoints(this.data.points, list) }, 'morph');
   }
 
@@ -862,6 +887,8 @@ export class PieChart {
     } else if (this.overlayDirty) {
       this.drawOverlay(now);
     }
+    // Caller-owned layers repaint last, on top of the finished frame.
+    this.afterDraw();
     this.raf = requestAnimationFrame(this.loop);
   };
 
@@ -948,6 +975,12 @@ export class PieChart {
     };
   }
 
+  /** Pointer position in CSS px, relative to the chart element. */
+  private cssPoint(e: { clientX: number; clientY: number }): { x: number; y: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
   /** True when `p` (device px) is close enough to the track to grab it. */
   private overSlider(p: { x: number; y: number }): boolean {
     if (!this.sliderCfg.show || !this.sliderCfg.interactive || this.seriesCount < 2) return false;
@@ -980,21 +1013,38 @@ export class PieChart {
   private onPointerDown = (e: PointerEvent): void => {
     const p = this.devicePoint(e);
     if (!this.overSlider(p)) return;
+    if (!this.allowsDrag('start', 'slider', this.cssPoint(e), 0, 0, e)) return;
     this.dragging = true;
     this.dragPointerId = e.pointerId;
+    this.lastDragPx = this.cssPoint(e);
     this.canvas.setPointerCapture?.(e.pointerId);
     e.preventDefault();
     this.seekTo(p);
   };
 
   private onPointerUp = (e: PointerEvent): void => {
-    if (!this.dragging || e.pointerId !== this.dragPointerId) return;
+    if (!this.dragging || e.pointerId !== this.dragPointerId) {
+      // Not a slider gesture, so report it as a click on whatever is under the
+      // pointer — a slice click without needing the pie to define one. A
+      // cancelled pointer is not a click, so it only reports the release.
+      if (e.type !== 'pointerup') return;
+      const hit = this.hitTest(this.devicePoint(e));
+      this.dispatchClick('click', hit, e, this.cssPoint(e), undefined, () => {});
+      return;
+    }
     this.dragging = false;
     this.dragPointerId = -1;
+    this.allowsDrag('end', 'slider', this.cssPoint(e), 0, 0, e);
     this.canvas.releasePointerCapture?.(e.pointerId);
     // Snap the handle onto the selected tick.
     this.handlePos = trackPos(this.seriesIndex, this.seriesCount);
     this.overlayDirty = true;
+  };
+
+  private onDoubleClick = (e: MouseEvent): void => {
+    const rect = this.canvas.getBoundingClientRect();
+    const p = { x: (e.clientX - rect.left) * this.dpr, y: (e.clientY - rect.top) * this.dpr };
+    this.dispatchClick('dblclick', this.hitTest(p), e, this.cssPoint(e), undefined, () => {});
   };
 
   private onPointerMove = (e: PointerEvent): void => {
@@ -1002,6 +1052,9 @@ export class PieChart {
     this.pointerPx = p;
 
     if (this.dragging) {
+      const px = this.cssPoint(e);
+      this.allowsDrag('move', 'slider', px, px.x - this.lastDragPx.x, px.y - this.lastDragPx.y, e);
+      this.lastDragPx = px;
       this.seekTo(p);
       return;
     }
@@ -1013,7 +1066,7 @@ export class PieChart {
     if (id !== this.hoveredSliceId) {
       this.hoveredSliceId = id;
       this.hovered = hit;
-      this.emitter.emit('hover', { slice: hit });
+      this.emit('hover', { slice: hit }, { native: e, cancelable: false });
     }
     // Mark dirty rather than drawing here: pointer events fire faster than the
     // display refreshes, and each redraw repaints the whole overlay.
@@ -1026,7 +1079,7 @@ export class PieChart {
     if (this.hoveredSliceId !== -1) {
       this.hoveredSliceId = -1;
       this.hovered = null;
-      this.emitter.emit('hover', { slice: null });
+      this.emit('hover', { slice: null }, { cancelable: false });
     }
     if (this.overlay && this.chrome.currentValue.show) this.overlayDirty = true;
   };
@@ -1044,7 +1097,7 @@ export class PieChart {
     return hitSlice(this.metas, lx, ly);
   }
 
-  dispose(): void {
+  override dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
@@ -1052,9 +1105,10 @@ export class PieChart {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
     this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('pointercancel', this.onPointerUp);
+    this.canvas.removeEventListener('dblclick', this.onDoubleClick);
     this.ro?.disconnect();
     this.renderer?.dispose();
-    this.emitter.clear();
+    super.dispose();
     this.legend?.dispose();
     this.title?.dispose();
     this.fps?.dispose();
