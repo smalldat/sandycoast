@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>React components — @smalldat/sandycoast</title>
+  <meta name="description" content="React bindings for every sandycoast chart: props, ref, events and a quick-start example." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <span class="dot"></span>
+      <span>@smalldat/sandycoast<small>sand-based charts</small></span>
+    </a>
+    <nav class="nav-group">
+      <h4>Start here</h4>
+      <a href="index.html">Overview</a>
+      <a href="index.html#install">Install &amp; publish</a>
+      <a href="data-model.html">Data model &amp; shared config</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Visuals</h4>
+      <a href="bar-chart.html">Bar chart</a>
+      <a href="line-chart.html">Line chart</a>
+      <a href="scatter-chart.html">Scatter chart</a>
+      <a href="pie-chart.html">Pie chart</a>
+      <a href="windrose-chart.html">Wind rose</a>
+      <a href="candlestick-chart.html">Candlestick chart</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Framework bindings</h4>
+      <a href="react.html" class="active">React</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Project</h4>
+      <a href="license.html">License</a>
+      <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <span class="eyebrow">Framework binding</span>
+    <h1>React components</h1>
+    <p class="lede">A thin React wrapper around every chart class below — same config, same events, same
+      imperative methods, exposed as a component instead of <code>new XChart(el, config)</code>. Ships in
+      the <strong>same package</strong>, under a separate entry point so plain-TS consumers pull in no
+      React code.</p>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <a href="#install">Install</a>
+      <a href="#quickstart">Quick start</a>
+      <a href="#shape">Shared prop shape</a>
+      <a href="#data-vs-options">data vs. options — what re-renders as what</a>
+      <a href="#components">Components</a>
+      <a href="#ref">The ref — imperative access</a>
+      <a href="#examples">More examples</a>
+    </div>
+
+    <h2 id="install">Install</h2>
+    <pre><code><span class="tok-com"># same package as the vanilla charts — react / react-dom are peer deps</span>
+npm install @smalldat/sandycoast react react-dom</code></pre>
+    <p>React 18 and 19 are both supported (<code>peerDependencies</code>). If your app doesn't already
+      depend on React, the base <code>@smalldat/sandycoast</code> import stays React-free — only code that
+      imports from <code>@smalldat/sandycoast/react</code> pulls it in.</p>
+
+    <h2 id="quickstart">Quick start</h2>
+    <pre><code><span class="tok-key">import</span> { BarChart } <span class="tok-key">from</span> <span class="tok-str">'@smalldat/sandycoast/react'</span>;
+
+<span class="tok-key">const</span> data = {
+  points: [
+    { x: <span class="tok-str">'Q1'</span>, y: <span class="tok-num">120</span>, z: <span class="tok-str">'EU'</span> },
+    { x: <span class="tok-str">'Q1'</span>, y: <span class="tok-num">90</span>,  z: <span class="tok-str">'US'</span> },
+    { x: <span class="tok-str">'Q2'</span>, y: <span class="tok-num">140</span>, z: <span class="tok-str">'EU'</span> },
+  ],
+};
+
+<span class="tok-key">function</span> <span class="tok-fn">Revenue</span>() {
+  <span class="tok-key">return</span> (
+    &lt;BarChart
+      data={data}
+      options={{ grain: { sizePx: <span class="tok-num">2.4</span> }, legend: { show: <span class="tok-key">true</span> } }}
+      style={{ width: <span class="tok-str">'100%'</span>, height: <span class="tok-num">360</span> }}
+      onHover={({ bar }) => console.<span class="tok-fn">log</span>(bar?.xValue, bar?.yValue)}
+    /&gt;
+  );
+}</code></pre>
+    <div class="note">
+      <strong>Container sizing.</strong> Same rule as the vanilla charts: the chart fills its container via
+      a <code>ResizeObserver</code>, so give it a size — pass <code>style</code> (as above) or a
+      <code>className</code> with a CSS rule.
+    </div>
+
+    <h2 id="shape">Shared prop shape</h2>
+    <p>Every component below takes the same five kinds of prop. Chart-specific pieces are the data type,
+      the <code>options</code> type (that chart's config, minus <code>data</code>), and the event props —
+      see <a href="#components">Components</a>.</p>
+    <table class="prop-table">
+      <thead><tr><th>Prop</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>data</code> <span class="pill">required</span></td><td class="type">DataSet | MeshDataSet | OhlcDataSet | WindDataSet</td>
+          <td>That chart's data — the same shape the vanilla constructor takes. See <a href="data-model.html">Data model</a>.</td></tr>
+        <tr><td><code>options</code></td><td class="type">Omit&lt;XChartConfig, 'data'&gt;</td>
+          <td>Every other config field that chart's doc page lists (style, animation, chrome, pan/zoom, …).</td></tr>
+        <tr><td><code>className</code> / <code>style</code></td><td class="type">string / CSSProperties</td>
+          <td>Applied to the chart's container <code>&lt;div&gt;</code>.</td></tr>
+        <tr><td><code>onXxx</code></td><td class="type">(payload) =&gt; void</td>
+          <td>One prop per event that chart's <code>.on(event, fn)</code> supports — see <a href="#components">Components</a> for the list per chart.</td></tr>
+        <tr><td><code>ref</code></td><td class="type">Ref&lt;XChart&gt;</td>
+          <td>The underlying vanilla chart instance once mounted. See <a href="#ref">below</a>.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="data-vs-options">data vs. options — what re-renders as what</h2>
+    <p>The two props are deliberately handled differently, matching what the vanilla API can do
+      efficiently:</p>
+    <table class="prop-table">
+      <thead><tr><th>Prop change</th><th>What happens</th></tr></thead>
+      <tbody>
+        <tr><td><code>data</code> changes (new reference)</td>
+          <td>Calls the chart's <code>update(data)</code> (or <code>setData</code> for the wind rose) — grains <strong>morph</strong> to the new targets, no re-pour.</td></tr>
+        <tr><td><code>options</code> changes (new reference)</td>
+          <td>The chart is <strong>disposed and recreated</strong> — config like style, animation timing or axes isn't dynamically patchable on the vanilla class either, so this mirrors it exactly.</td></tr>
+      </tbody>
+    </table>
+    <div class="note warn">
+      <strong>Memoize <code>options</code>.</strong> An inline object literal is a new reference every
+      render, which would recreate the chart on every re-render. Hoist it to module scope (as in the quick
+      start above) or wrap it in <code>useMemo</code>.
+    </div>
+
+    <h2 id="components">Components</h2>
+    <table class="prop-table">
+      <thead><tr><th>Component</th><th><code>data</code> type</th><th>Event props</th><th>Config reference</th></tr></thead>
+      <tbody>
+        <tr><td><code>BarChart</code></td><td class="type">DataSet</td>
+          <td><code>onHover</code>, <code>onSeriesFocus</code></td><td><a href="bar-chart.html">Bar chart →</a></td></tr>
+        <tr><td><code>LineChart</code></td><td class="type">DataSet</td>
+          <td><code>onHover</code>, <code>onSeriesFocus</code></td><td><a href="line-chart.html">Line chart →</a></td></tr>
+        <tr><td><code>PieChart</code></td><td class="type">DataSet</td>
+          <td><code>onHover</code>, <code>onSeriesChange</code>, <code>onSeriesFocus</code></td><td><a href="pie-chart.html">Pie chart →</a></td></tr>
+        <tr><td><code>ScatterChart</code></td><td class="type">MeshDataSet</td>
+          <td><code>onHover</code>, <code>onSeriesFocus</code></td><td><a href="scatter-chart.html">Scatter chart →</a></td></tr>
+        <tr><td><code>WindRoseChart&lt;Custom&gt;</code></td><td class="type">WindDataSet&lt;Custom&gt;</td>
+          <td><code>onHover</code>, <code>onSelect</code>, <code>onHighlight</code></td><td><a href="windrose-chart.html">Wind rose →</a></td></tr>
+        <tr><td><code>CandlestickChart</code></td><td class="type">OhlcDataSet</td>
+          <td><code>onHover</code>, <code>onClick</code>, <code>onSeriesChange</code>, <code>onSeriesFocus</code></td><td><a href="candlestick-chart.html">Candlestick chart →</a></td></tr>
+      </tbody>
+    </table>
+    <p>Each event prop's payload is exactly what the matching vanilla <code>.on(event, fn)</code> passes —
+      see that chart's own <strong>Events</strong> section for the payload shape.
+      <code>WindRoseChart</code> is generic over the same <code>Custom</code> per-observation payload type
+      as the vanilla class; it defaults to <code>unknown</code>.</p>
+
+    <h2 id="ref">The ref — imperative access</h2>
+    <p>A <code>ref</code> on any of these components resolves to the underlying chart instance — the exact
+      same object <code>new XChart(el, config)</code> would give you — once it has mounted (<code>null</code>
+      before that). Use it for anything that isn't a prop: <code>focusSeries()</code>,
+      <code>getView()</code>/<code>panBy()</code>/<code>zoomTo()</code>, <code>repour()</code>,
+      <code>getData()</code>, the wind rose's <code>selectObservation()</code> / <code>selectSegment()</code>,
+      and so on — see each chart's <strong>Methods</strong> section.</p>
+    <pre><code><span class="tok-key">import</span> { useRef } <span class="tok-key">from</span> <span class="tok-str">'react'</span>;
+<span class="tok-key">import</span> { BarChart } <span class="tok-key">from</span> <span class="tok-str">'@smalldat/sandycoast/react'</span>;
+<span class="tok-key">import</span> <span class="tok-key">type</span> { BarChart <span class="tok-key">as</span> BarChartInstance } <span class="tok-key">from</span> <span class="tok-str">'@smalldat/sandycoast'</span>;
+
+<span class="tok-key">function</span> <span class="tok-fn">Chart</span>() {
+  <span class="tok-key">const</span> ref = <span class="tok-fn">useRef</span>&lt;BarChartInstance&gt;(<span class="tok-key">null</span>);
+
+  <span class="tok-key">return</span> (
+    &lt;&gt;
+      &lt;button onClick={() => ref.current?.<span class="tok-fn">focusSeries</span>(<span class="tok-key">null</span>)}&gt;Clear isolation&lt;/button&gt;
+      &lt;BarChart ref={ref} data={data} style={{ height: <span class="tok-num">360</span> }} /&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+
+    <h2 id="examples">More examples</h2>
+    <h3>Live data — the same morph the vanilla API gives you</h3>
+    <pre><code><span class="tok-key">function</span> <span class="tok-fn">Live</span>() {
+  <span class="tok-key">const</span> [data, setData] = <span class="tok-fn">useState</span>(initialData);
+
+  <span class="tok-com">// A new `data` reference morphs the grains in place — no re-pour.</span>
+  <span class="tok-key">const</span> refresh = () => <span class="tok-fn">setData</span>(<span class="tok-fn">fetchLatest</span>());
+
+  <span class="tok-key">return</span> &lt;BarChart data={data} style={{ height: <span class="tok-num">360</span> }} /&gt;;
+}</code></pre>
+
+    <h3>Wind rose with a typed <code>Custom</code> payload</h3>
+    <p>JSX doesn't take an explicit generic argument on the tag, so type <code>windData</code> itself —
+      <code>WindRoseChart</code> infers <code>Custom</code> from it.</p>
+    <pre><code><span class="tok-key">interface</span> Reading { stationId: <span class="tok-typ">string</span>; }
+
+<span class="tok-key">const</span> windData: WindDataSet&lt;Reading&gt; = { points: [<span class="tok-com">/* … */</span>] };
+
+&lt;WindRoseChart
+  data={windData}
+  onSelect={({ segment, observationId }) => <span class="tok-fn">console.log</span>(segment?.key, observationId)}
+/&gt;</code></pre>
+
+    <div class="note">
+      <strong>Try it live.</strong> The playground demo site has a <em>React bindings</em> tab with a
+      runnable example — and its exact source — for every chart above.
+    </div>
+
+    <div class="foot">
+      <p>© <span id="yr">2026</span> · <a href="license.html">License</a> ·
+        <a href="data-model.html">Data model →</a></p>
+    </div>
+  </main>
+</div>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
+</body>
+</html>

@@ -5,6 +5,7 @@
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["@webgpu/types"],
+    "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -15,7 +16,17 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "isolatedModules": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    // The playground's React examples import the package by its own name
+    // (`@smalldat/sandycoast[/react]`) so their copy-pasteable code shows a
+    // real package specifier — these mirror vite.config.ts's dev-time alias
+    // so `tsc` resolves straight to source too, instead of through the
+    // package's own "exports" map (which points at `dist/`, and would make
+    // typecheck depend on a fresh build).
+    "paths": {
+      "@smalldat/sandycoast/react": ["./src/react/index.ts"],
+      "@smalldat/sandycoast": ["./src/index.ts"]
+    }
   },
   "include": ["src", "playground"],
   "exclude": ["node_modules", "dist"]
