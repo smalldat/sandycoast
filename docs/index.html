@@ -31,6 +31,10 @@
       <a href="index.html#roadmap" style="opacity:.55">Area chart <span class="pill">soon</span></a>
     </nav>
     <nav class="nav-group">
+      <h4>Framework bindings</h4>
+      <a href="react.html">React</a>
+    </nav>
+    <nav class="nav-group">
       <h4>Project</h4>
       <a href="license.html">License</a>
       <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
@@ -76,6 +80,10 @@
       <a class="card" href="data-model.html">
         <h3>Data model →</h3>
         <p>The generic <code>Point&lt;x,y,z&gt;</code> model, scales, colors, easing and backends — shared by every visual.</p>
+      </a>
+      <a class="card" href="react.html">
+        <h3>React components →</h3>
+        <p>Every chart above as a React component — same config and events, plus a ref to the underlying chart instance. Ships in this package under <code>@smalldat/sandycoast/react</code>.</p>
       </a>
       <a class="card disabled" href="#roadmap">
         <h3>Area chart</h3>
@@ -162,9 +170,10 @@ git push
       between series, and — new with the wind rose — a two-indicator data model, a shared time table,
       latest-value highlighting and overridable pointer hooks (which the candlestick chart reuses).
       The candlestick chart adds an OHLC data model, a configurable rising/falling colour rule
-      (including a custom rule function) and a live-price line.</p>
+      (including a custom rule function) and a live-price line. A <a href="react.html">React binding</a>
+      for every chart above, shipped in this package under <code>@smalldat/sandycoast/react</code>.</p>
     <p><strong>Planned next:</strong> WebGL2 fallback, an area chart, color-by-value (using the scatter
-      chart's <code>z.value</code>), a mesh chart, framework wrappers.</p>
+      chart's <code>z.value</code>), a mesh chart.</p>
 
     <div class="foot">
       <p>© <span id="yr">2026</span> · Dual-licensed — see <a href="license.html">License</a>.

@@ -22,6 +22,7 @@ import { barChartDemo } from './barchart.demo.js';
 import { candlestickChartDemo } from './candlestickchart.demo.js';
 import { lineChartDemo } from './linechart.demo.js';
 import { pieChartDemo } from './piechart.demo.js';
+import { reactPlaygroundDemo } from './reactplayground.demo.js';
 import { scatterChartDemo } from './scatterchart.demo.js';
 import { windRoseChartDemo } from './windrosechart.demo.js';
 
@@ -33,4 +34,5 @@ export const COMPONENTS: DemoComponent[] = [
   windRoseChartDemo,
   candlestickChartDemo,
   { id: 'area', label: 'Area chart', disabled: true, mount() {}, unmount() {} },
+  reactPlaygroundDemo,
 ];
