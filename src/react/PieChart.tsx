@@ -1,11 +1,15 @@
-import { type CSSProperties, forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { type CSSProperties, forwardRef, useImperativeHandle, useRef } from 'react';
 import type { HoverPayload, SeriesChangePayload } from '../charts/pie/types.js';
 import { PieChart as PieChartCore } from '../index.js';
 import type { DataSet, PieChartConfig, SeriesFocusPayload } from '../index.js';
-import { useChartData, useChartLifecycle } from './useChartLifecycle.js';
+import { useChart, useLatest } from './useChartLifecycle.js';
 
 export interface PieChartProps {
-  /** Chart data; changes morph the existing slices in place. */
+  /**
+   * Chart data; changes morph the existing slices in place. Compared by
+   * reference, so build it outside render (or memoize it) — a fresh literal
+   * on every render restarts the morph.
+   */
   data: DataSet;
   /**
    * Every other {@link PieChartConfig} option (style, animation, chrome,
@@ -33,28 +37,21 @@ export const PieChart = forwardRef<PieChartCore, PieChartProps>(function PieChar
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const instance = useChartLifecycle(
+  const handlers = useLatest({ onHover, onSeriesChange, onSeriesFocus });
+
+  const instance = useChart<PieChartCore, DataSet>({
     containerRef,
-    (el) => new PieChartCore(el, { ...options, data } as PieChartConfig),
-    [options],
-  );
-
-  useChartData(instance, data, applyData);
-
-  useEffect(() => {
-    if (!instance || !onHover) return;
-    return instance.on('hover', onHover);
-  }, [instance, onHover]);
-
-  useEffect(() => {
-    if (!instance || !onSeriesChange) return;
-    return instance.on('seriesChange', onSeriesChange);
-  }, [instance, onSeriesChange]);
-
-  useEffect(() => {
-    if (!instance || !onSeriesFocus) return;
-    return instance.on('seriesFocus', onSeriesFocus);
-  }, [instance, onSeriesFocus]);
+    data,
+    create: (el, initialData) =>
+      new PieChartCore(el, { ...options, data: initialData } as PieChartConfig),
+    update: applyData,
+    subscribe: (chart) => [
+      chart.on('hover', (p) => handlers.current.onHover?.(p)),
+      chart.on('seriesChange', (p) => handlers.current.onSeriesChange?.(p)),
+      chart.on('seriesFocus', (p) => handlers.current.onSeriesFocus?.(p)),
+    ],
+    deps: [options],
+  });
 
   useImperativeHandle(ref, () => instance as PieChartCore, [instance]);
 

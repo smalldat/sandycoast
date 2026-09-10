@@ -1,11 +1,15 @@
-import { type CSSProperties, forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { type CSSProperties, forwardRef, useImperativeHandle, useRef } from 'react';
 import type { HoverPayload } from '../charts/bar/types.js';
 import { BarChart as BarChartCore } from '../index.js';
 import type { BarChartConfig, DataSet, SeriesFocusPayload } from '../index.js';
-import { useChartData, useChartLifecycle } from './useChartLifecycle.js';
+import { useChart, useLatest } from './useChartLifecycle.js';
 
 export interface BarChartProps {
-  /** Chart data; changes morph the existing bars in place. */
+  /**
+   * Chart data; changes morph the existing bars in place. Compared by
+   * reference, so build it outside render (or memoize it) — a fresh literal
+   * on every render restarts the morph.
+   */
   data: DataSet;
   /**
    * Every other {@link BarChartConfig} option (style, animation, chrome,
@@ -31,23 +35,20 @@ export const BarChart = forwardRef<BarChartCore, BarChartProps>(function BarChar
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const instance = useChartLifecycle(
+  const handlers = useLatest({ onHover, onSeriesFocus });
+
+  const instance = useChart<BarChartCore, DataSet>({
     containerRef,
-    (el) => new BarChartCore(el, { ...options, data } as BarChartConfig),
-    [options],
-  );
-
-  useChartData(instance, data, applyData);
-
-  useEffect(() => {
-    if (!instance || !onHover) return;
-    return instance.on('hover', onHover);
-  }, [instance, onHover]);
-
-  useEffect(() => {
-    if (!instance || !onSeriesFocus) return;
-    return instance.on('seriesFocus', onSeriesFocus);
-  }, [instance, onSeriesFocus]);
+    data,
+    create: (el, initialData) =>
+      new BarChartCore(el, { ...options, data: initialData } as BarChartConfig),
+    update: applyData,
+    subscribe: (chart) => [
+      chart.on('hover', (p) => handlers.current.onHover?.(p)),
+      chart.on('seriesFocus', (p) => handlers.current.onSeriesFocus?.(p)),
+    ],
+    deps: [options],
+  });
 
   useImperativeHandle(ref, () => instance as BarChartCore, [instance]);
 

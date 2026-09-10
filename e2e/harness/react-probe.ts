@@ -7,6 +7,8 @@
 export interface ReactProbe {
   ready: boolean;
   backend: string | null;
+  /** How many times the wind rose's `onHighlight` prop has fired. */
+  highlights: number;
 }
 
 declare global {

@@ -1,4 +1,4 @@
-import { type CSSProperties, forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { type CSSProperties, forwardRef, useImperativeHandle, useRef } from 'react';
 import type {
   ClickPayload,
   HoverPayload,
@@ -6,10 +6,14 @@ import type {
 } from '../charts/candlestick/types.js';
 import { CandlestickChart as CandlestickChartCore } from '../index.js';
 import type { CandlestickChartConfig, OhlcDataSet, SeriesFocusPayload } from '../index.js';
-import { useChartData, useChartLifecycle } from './useChartLifecycle.js';
+import { useChart, useLatest } from './useChartLifecycle.js';
 
 export interface CandlestickChartProps {
-  /** OHLC data; changes morph the existing candles in place. */
+  /**
+   * OHLC data; changes morph the existing candles in place. Compared by
+   * reference, so build it outside render (or memoize it) — a fresh literal
+   * on every render restarts the morph.
+   */
   data: OhlcDataSet;
   /**
    * Every other {@link CandlestickChartConfig} option (candle style,
@@ -41,33 +45,22 @@ export const CandlestickChart = forwardRef<CandlestickChartCore, CandlestickChar
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
-    const instance = useChartLifecycle(
+    const handlers = useLatest({ onHover, onClick, onSeriesChange, onSeriesFocus });
+
+    const instance = useChart<CandlestickChartCore, OhlcDataSet>({
       containerRef,
-      (el) => new CandlestickChartCore(el, { ...options, data } as CandlestickChartConfig),
-      [options],
-    );
-
-    useChartData(instance, data, applyData);
-
-    useEffect(() => {
-      if (!instance || !onHover) return;
-      return instance.on('hover', onHover);
-    }, [instance, onHover]);
-
-    useEffect(() => {
-      if (!instance || !onClick) return;
-      return instance.on('click', onClick);
-    }, [instance, onClick]);
-
-    useEffect(() => {
-      if (!instance || !onSeriesChange) return;
-      return instance.on('seriesChange', onSeriesChange);
-    }, [instance, onSeriesChange]);
-
-    useEffect(() => {
-      if (!instance || !onSeriesFocus) return;
-      return instance.on('seriesFocus', onSeriesFocus);
-    }, [instance, onSeriesFocus]);
+      data,
+      create: (el, initialData) =>
+        new CandlestickChartCore(el, { ...options, data: initialData } as CandlestickChartConfig),
+      update: applyData,
+      subscribe: (chart) => [
+        chart.on('hover', (p) => handlers.current.onHover?.(p)),
+        chart.on('click', (p) => handlers.current.onClick?.(p)),
+        chart.on('seriesChange', (p) => handlers.current.onSeriesChange?.(p)),
+        chart.on('seriesFocus', (p) => handlers.current.onSeriesFocus?.(p)),
+      ],
+      deps: [options],
+    });
 
     useImperativeHandle(ref, () => instance as CandlestickChartCore, [instance]);
 

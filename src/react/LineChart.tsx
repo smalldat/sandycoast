@@ -1,11 +1,15 @@
-import { type CSSProperties, forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { type CSSProperties, forwardRef, useImperativeHandle, useRef } from 'react';
 import type { HoverPayload } from '../charts/line/types.js';
 import { LineChart as LineChartCore } from '../index.js';
 import type { DataSet, LineChartConfig, SeriesFocusPayload } from '../index.js';
-import { useChartData, useChartLifecycle } from './useChartLifecycle.js';
+import { useChart, useLatest } from './useChartLifecycle.js';
 
 export interface LineChartProps {
-  /** Chart data; changes morph the existing lines in place. */
+  /**
+   * Chart data; changes morph the existing lines in place. Compared by
+   * reference, so build it outside render (or memoize it) — a fresh literal
+   * on every render restarts the morph.
+   */
   data: DataSet;
   /**
    * Every other {@link LineChartConfig} option (style, animation, chrome,
@@ -31,23 +35,20 @@ export const LineChart = forwardRef<LineChartCore, LineChartProps>(function Line
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const instance = useChartLifecycle(
+  const handlers = useLatest({ onHover, onSeriesFocus });
+
+  const instance = useChart<LineChartCore, DataSet>({
     containerRef,
-    (el) => new LineChartCore(el, { ...options, data } as LineChartConfig),
-    [options],
-  );
-
-  useChartData(instance, data, applyData);
-
-  useEffect(() => {
-    if (!instance || !onHover) return;
-    return instance.on('hover', onHover);
-  }, [instance, onHover]);
-
-  useEffect(() => {
-    if (!instance || !onSeriesFocus) return;
-    return instance.on('seriesFocus', onSeriesFocus);
-  }, [instance, onSeriesFocus]);
+    data,
+    create: (el, initialData) =>
+      new LineChartCore(el, { ...options, data: initialData } as LineChartConfig),
+    update: applyData,
+    subscribe: (chart) => [
+      chart.on('hover', (p) => handlers.current.onHover?.(p)),
+      chart.on('seriesFocus', (p) => handlers.current.onSeriesFocus?.(p)),
+    ],
+    deps: [options],
+  });
 
   useImperativeHandle(ref, () => instance as LineChartCore, [instance]);
 

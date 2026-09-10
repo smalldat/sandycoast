@@ -77,11 +77,14 @@ npm install @smalldat/sandycoast react react-dom</code></pre>
   ],
 };
 
+<span class="tok-com">// hoisted, so its identity is stable across renders — see below</span>
+<span class="tok-key">const</span> options = { grain: { sizePx: <span class="tok-num">2.4</span> }, legend: { show: <span class="tok-key">true</span> } };
+
 <span class="tok-key">function</span> <span class="tok-fn">Revenue</span>() {
   <span class="tok-key">return</span> (
     &lt;BarChart
       data={data}
-      options={{ grain: { sizePx: <span class="tok-num">2.4</span> }, legend: { show: <span class="tok-key">true</span> } }}
+      options={options}
       style={{ width: <span class="tok-str">'100%'</span>, height: <span class="tok-num">360</span> }}
       onHover={({ bar }) => console.<span class="tok-fn">log</span>(bar?.xValue, bar?.yValue)}
     /&gt;
@@ -128,7 +131,8 @@ npm install @smalldat/sandycoast react react-dom</code></pre>
     <div class="note warn">
       <strong>Memoize <code>options</code>.</strong> An inline object literal is a new reference every
       render, which would recreate the chart on every re-render. Hoist it to module scope (as in the quick
-      start above) or wrap it in <code>useMemo</code>.
+      start above) or wrap it in <code>useMemo</code>. The same goes for <code>data</code>, for a milder
+      reason: a fresh literal every render restarts the morph tween rather than recreating the chart.
     </div>
 
     <h2 id="components">Components</h2>

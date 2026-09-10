@@ -3,17 +3,20 @@ import {
   type ReactElement,
   type Ref,
   forwardRef,
-  useEffect,
   useImperativeHandle,
   useRef,
 } from 'react';
 import type { HighlightPayload, HoverPayload, SelectPayload } from '../charts/windrose/types.js';
 import { WindRoseChart as WindRoseChartCore } from '../index.js';
 import type { WindDataSet, WindRoseChartConfig } from '../index.js';
-import { useChartData, useChartLifecycle } from './useChartLifecycle.js';
+import { useChart, useLatest } from './useChartLifecycle.js';
 
 export interface WindRoseChartProps<Custom = unknown> {
-  /** Wind observations; changes re-bin and morph the existing petals in place. */
+  /**
+   * Wind observations; changes re-bin and morph the existing petals in
+   * place. Compared by reference, so build it outside render (or memoize
+   * it) — a fresh literal on every render restarts the morph.
+   */
   data: WindDataSet<Custom>;
   /**
    * Every other {@link WindRoseChartConfig} option (sectors, bands, style,
@@ -25,6 +28,7 @@ export interface WindRoseChartProps<Custom = unknown> {
   style?: CSSProperties;
   onHover?: (payload: HoverPayload) => void;
   onSelect?: (payload: SelectPayload) => void;
+  /** Fires with the highlighted segment, including once for the initial data. */
   onHighlight?: (payload: HighlightPayload) => void;
 }
 
@@ -37,28 +41,24 @@ function WindRoseChartInner<Custom = unknown>(
   ref: Ref<WindRoseChartCore<Custom>>,
 ): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
-  const instance = useChartLifecycle(
+  const handlers = useLatest({ onHover, onSelect, onHighlight });
+
+  const instance = useChart<WindRoseChartCore<Custom>, WindDataSet<Custom>>({
     containerRef,
-    (el) => new WindRoseChartCore<Custom>(el, { ...options, data } as WindRoseChartConfig<Custom>),
-    [options],
-  );
-
-  useChartData(instance, data, applyData);
-
-  useEffect(() => {
-    if (!instance || !onHover) return;
-    return instance.on('hover', onHover);
-  }, [instance, onHover]);
-
-  useEffect(() => {
-    if (!instance || !onSelect) return;
-    return instance.on('select', onSelect);
-  }, [instance, onSelect]);
-
-  useEffect(() => {
-    if (!instance || !onHighlight) return;
-    return instance.on('highlight', onHighlight);
-  }, [instance, onHighlight]);
+    data,
+    create: (el, initialData) =>
+      new WindRoseChartCore<Custom>(el, {
+        ...options,
+        data: initialData,
+      } as WindRoseChartConfig<Custom>),
+    update: applyData,
+    subscribe: (chart) => [
+      chart.on('hover', (p) => handlers.current.onHover?.(p)),
+      chart.on('select', (p) => handlers.current.onSelect?.(p)),
+      chart.on('highlight', (p) => handlers.current.onHighlight?.(p)),
+    ],
+    deps: [options],
+  });
 
   useImperativeHandle(ref, () => instance as WindRoseChartCore<Custom>, [instance]);
 
