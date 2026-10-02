@@ -35,6 +35,28 @@ test.describe('react bindings', () => {
     expect(errors).toEqual([]);
   });
 
+  test('draws the `layers` prop and delivers `onClick` with the mark', async ({ page, pkg }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+
+    await page.goto(pkg === 'dist' ? '/react-packaged.html' : '/react.html');
+    await page.waitForFunction(() => !!window.__scReact?.ready, undefined, { timeout: 15_000 });
+
+    // The `layers` prop's rule has to reach the kernel's layer canvas.
+    await expect
+      .poll(() => page.evaluate(() => window.__scReact?.layerInk?.() ?? -1), { timeout: 5_000 })
+      .toBeGreaterThan(0);
+
+    // A real click on a bar must arrive at the React prop with its meta.
+    // Inside the Q1 group: y stays clear of the x-axis gutter at the bottom.
+    const box = await page.locator('#bar-host').boundingBox();
+    if (!box) throw new Error('no bar host box');
+    await page.mouse.click(box.x + box.width * 0.25, box.y + box.height * 0.8);
+
+    await expect.poll(() => page.evaluate(() => window.__scReact?.clicks ?? [])).toEqual(['Q1']);
+    expect(errors).toEqual([]);
+  });
+
   test('delivers the wind rose highlight emitted during its first layout', async ({
     page,
     pkg,

@@ -7,11 +7,19 @@ import {
   useRef,
 } from 'react';
 import type { HighlightPayload, HoverPayload, SelectPayload } from '../charts/windrose/types.js';
+import type { SegmentMeta } from '../charts/windrose/types.js';
 import { WindRoseChart as WindRoseChartCore } from '../index.js';
 import type { WindDataSet, WindRoseChartConfig } from '../index.js';
+import type { WindPoint } from '../index.js';
+import type { ChartElement } from '../index.js';
+import { type ChartEventProps, subscribeCoreEvents, useChartLayers } from './coreEvents.js';
 import { useChart, useLatest } from './useChartLifecycle.js';
 
-export interface WindRoseChartProps<Custom = unknown> {
+/** Items this chart's data methods accept, as reported by the `data*` events. */
+type RoseItem = WindPoint | number;
+
+export interface WindRoseChartProps<Custom = unknown>
+  extends ChartEventProps<SegmentMeta, RoseItem> {
   /**
    * Wind observations; changes re-bin and morph the existing petals in
    * place. Compared by reference, so build it outside render (or memoize
@@ -24,6 +32,12 @@ export interface WindRoseChartProps<Custom = unknown> {
    * with `useMemo`) so it doesn't change identity on every render.
    */
   options?: Omit<WindRoseChartConfig<Custom>, 'data'>;
+  /**
+   * Declarative annotations drawn on top of the chart (a threshold rule,
+   * a target band, a callout). Compared by reference, so memoize it.
+   * Layers added imperatively through the ref are left alone.
+   */
+  layers?: readonly ChartElement[];
   className?: string;
   style?: CSSProperties;
   onHover?: (payload: HoverPayload) => void;
@@ -37,11 +51,42 @@ function applyData<Custom>(instance: WindRoseChartCore<Custom>, data: WindDataSe
 }
 
 function WindRoseChartInner<Custom = unknown>(
-  { data, options, className, style, onHover, onSelect, onHighlight }: WindRoseChartProps<Custom>,
+  {
+    data,
+    options,
+    layers,
+    className,
+    style,
+    onHover,
+    onSelect,
+    onHighlight,
+    onClick,
+    onDblClick,
+    onDrag,
+    onPan,
+    onZoom,
+    onDrawFinished,
+    onDataAdd,
+    onDataUpdate,
+    onDataRemove,
+  }: WindRoseChartProps<Custom>,
   ref: Ref<WindRoseChartCore<Custom>>,
 ): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
-  const handlers = useLatest({ onHover, onSelect, onHighlight });
+  const handlers = useLatest({
+    onHover,
+    onSelect,
+    onHighlight,
+    onClick,
+    onDblClick,
+    onDrag,
+    onPan,
+    onZoom,
+    onDrawFinished,
+    onDataAdd,
+    onDataUpdate,
+    onDataRemove,
+  });
 
   const instance = useChart<WindRoseChartCore<Custom>, WindDataSet<Custom>>({
     containerRef,
@@ -56,9 +101,12 @@ function WindRoseChartInner<Custom = unknown>(
       chart.on('hover', (p) => handlers.current.onHover?.(p)),
       chart.on('select', (p) => handlers.current.onSelect?.(p)),
       chart.on('highlight', (p) => handlers.current.onHighlight?.(p)),
+      ...subscribeCoreEvents(chart, () => handlers.current),
     ],
     deps: [options],
   });
+
+  useChartLayers(instance, layers);
 
   useImperativeHandle(ref, () => instance as WindRoseChartCore<Custom>, [instance]);
 

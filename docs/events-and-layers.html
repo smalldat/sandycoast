@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Events &amp; custom drawing — @smalldat/sandycoast</title>
+  <meta name="description" content="The cancellable event surface and caller-owned drawing layers every sandycoast chart inherits." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <span class="dot"></span>
+      <span>@smalldat/sandycoast<small>sand-based charts</small></span>
+    </a>
+    <nav class="nav-group">
+      <h4>Start here</h4>
+      <a href="index.html">Overview</a>
+      <a href="index.html#install">Install &amp; publish</a>
+      <a href="data-model.html">Data model &amp; shared config</a>
+      <a href="events-and-layers.html" class="active">Events &amp; custom drawing</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Visuals</h4>
+      <a href="bar-chart.html">Bar chart</a>
+      <a href="line-chart.html">Line chart</a>
+      <a href="scatter-chart.html">Scatter chart</a>
+      <a href="pie-chart.html">Pie chart</a>
+      <a href="windrose-chart.html">Wind rose</a>
+      <a href="candlestick-chart.html">Candlestick chart</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Framework bindings</h4>
+      <a href="react.html">React</a>
+    </nav>
+    <nav class="nav-group">
+      <h4>Project</h4>
+      <a href="license.html">License</a>
+      <a href="https://github.com/ondrejspilka/sandycoast.smalldat">GitHub ↗</a>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <span class="eyebrow">Shared across every visual</span>
+    <h1>Events &amp; custom drawing</h1>
+    <p class="lede">Every chart in the package inherits one event surface and one drawing API from a common
+      base class. The events are <strong>cancellable</strong> — a listener can veto the chart's built-in
+      reaction — and the drawing API lets you paint your own annotations on top, in the chart's own
+      coordinates, without forking anything.</p>
+
+    <div class="toc">
+      <strong>On this page</strong>
+      <a href="#listening">Listening</a>
+      <a href="#cancelling">Cancelling the default</a>
+      <a href="#reference">Event reference</a>
+      <a href="#precedence">Order of precedence</a>
+      <a href="#data-events">Data events fire first</a>
+      <a href="#layers">Drawing layers</a>
+      <a href="#elements">Declarative elements</a>
+      <a href="#spaces">Coordinate spaces</a>
+      <a href="#react">In React</a>
+    </div>
+
+    <h2 id="listening">Listening</h2>
+    <p><code>chart.on(event, fn)</code> registers a listener and returns a function that removes it. The
+      handler receives one object carrying <strong>the payload's own fields</strong> plus the cancellation
+      members — there is no <code>detail</code> wrapper, so a handler written against a payload
+      (<code>e.bar</code>, <code>e.index</code>) reads exactly the same as it always did.</p>
+    <pre><code><span class="tok-key">const</span> off = chart.<span class="tok-fn">on</span>(<span class="tok-str">'click'</span>, (e) => {
+  console.<span class="tok-fn">log</span>(e.meta, e.px, e.button);
+  console.<span class="tok-fn">log</span>(e.type, e.native, e.cancelable, e.defaultPrevented);
+});
+
+<span class="tok-fn">off</span>(); <span class="tok-com">// unsubscribe</span></code></pre>
+
+    <table class="prop-table">
+      <thead><tr><th>Member</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>type</code></td><td class="type">string</td>
+          <td>Event name, so one function can serve several registrations.</td></tr>
+        <tr><td><code>native</code></td><td class="type">Event | null</td>
+          <td>The originating DOM event, or <code>null</code> for programmatic and internal causes.</td></tr>
+        <tr><td><code>cancelable</code></td><td class="type">boolean</td>
+          <td>Whether <code>preventDefault()</code> does anything for this event.</td></tr>
+        <tr><td><code>defaultPrevented</code></td><td class="type">boolean</td>
+          <td>True once any listener has cancelled the built-in reaction.</td></tr>
+        <tr><td><code>preventDefault()</code></td><td class="type">() =&gt; void</td>
+          <td>Suppress the chart's built-in reaction. A no-op when <code>cancelable</code> is false.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="cancelling">Cancelling the default</h2>
+    <p>Cancelling stops the chart from acting, not the other listeners from hearing about it — every
+      registered handler still runs. That matters when one part of an app observes an event while another
+      part governs it.</p>
+    <pre><code><span class="tok-com">// Read-only chart: keep the view exactly where it was put.</span>
+chart.<span class="tok-fn">on</span>(<span class="tok-str">'pan'</span>, (e) => e.<span class="tok-fn">preventDefault</span>());
+chart.<span class="tok-fn">on</span>(<span class="tok-str">'zoom'</span>, (e) => e.<span class="tok-fn">preventDefault</span>());
+
+<span class="tok-com">// Reject data that fails validation — the chart never rebuilds.</span>
+chart.<span class="tok-fn">on</span>(<span class="tok-str">'dataAdd'</span>, (e) => {
+  <span class="tok-key">if</span> (e.items.<span class="tok-fn">some</span>(<span class="tok-fn">isOutOfRange</span>)) e.<span class="tok-fn">preventDefault</span>();
+});</code></pre>
+
+    <h2 id="reference">Event reference</h2>
+    <p>These nine are on every chart. Each visual adds its own on top — <code>hover</code> everywhere,
+      plus <code>seriesFocus</code>, <code>seriesChange</code>, <code>select</code> or
+      <code>highlight</code> depending on the chart; see that chart's <strong>Events</strong> section.</p>
+    <table class="prop-table">
+      <thead><tr><th>Event</th><th>Payload fields</th><th>Cancel?</th><th>Fires</th></tr></thead>
+      <tbody>
+        <tr><td><code>click</code></td><td class="type">meta, px, button</td><td>yes</td>
+          <td>On pointer-up over the chart. <code>meta</code> is the mark under the pointer, or <code>null</code> for the background.</td></tr>
+        <tr><td><code>dblclick</code></td><td class="type">meta, px, button</td><td>yes</td>
+          <td>On a double click, same payload as <code>click</code>.</td></tr>
+        <tr><td><code>drag</code></td><td class="type">phase, target, dx, dy, px</td><td>on <code>'start'</code></td>
+          <td>Each phase of a press-move-release. <code>target</code> is <code>'view'</code> (pan) or <code>'slider'</code> (the pie/candlestick series slider).</td></tr>
+        <tr><td><code>pan</code></td><td class="type">offset, delta</td><td>yes</td>
+          <td>Before the view translates — from a drag, a programmatic <code>panBy()</code>/<code>panTo()</code>, or the zoom controls.</td></tr>
+        <tr><td><code>zoom</code></td><td class="type">scale, factor, center</td><td>yes</td>
+          <td>Before the view scales — wheel, buttons, or <code>zoomBy()</code>/<code>zoomTo()</code>.</td></tr>
+        <tr><td><code>drawFinished</code></td><td class="type">now, frame</td><td>no</td>
+          <td>After each rendered frame. See the warning below.</td></tr>
+        <tr><td><code>dataAdd</code></td><td class="type">action, items</td><td>yes</td>
+          <td>Before <code>add()</code> applies.</td></tr>
+        <tr><td><code>dataUpdate</code></td><td class="type">action, items</td><td>yes</td>
+          <td>Before <code>update()</code> / <code>setData()</code> applies. <code>action</code> is <code>'update'</code> for a patch list, <code>'replace'</code> for a whole dataset.</td></tr>
+        <tr><td><code>dataRemove</code></td><td class="type">action, items</td><td>yes</td>
+          <td>Before <code>remove()</code> applies; <code>items</code> holds the refs or indices passed in.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note warn">
+      <strong><code>drawFinished</code> fires every animation frame</strong> — roughly sixty times a
+      second while anything is animating. Keep the handler cheap, and never let it trigger a re-render or
+      a layout read. It is a notification about work already done, so it is not cancellable.
+    </div>
+
+    <div class="note">
+      <strong>Two chart-specific notes.</strong> <code>pan</code> and <code>zoom</code> only fire on charts
+      with <code>panZoom.enabled</code> — the pie and wind rose have no view to move. And the wind rose
+      emits <code>click</code> on pointer-<em>down</em> rather than pointer-up, because that is when its
+      petal selection has always happened; cancelling still suppresses that selection.
+    </div>
+
+    <h2 id="precedence">Order of precedence</h2>
+    <p>Charts that expose <code>interaction.mouse</code> hooks (the wind rose and candlestick) now have two
+      override layers. They run in a fixed order, and each can stop the ones below it:</p>
+    <table class="prop-table">
+      <thead><tr><th>#</th><th>Layer</th><th>Can</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>chart.on('click', …)</code> listeners</td><td>Observe, and veto everything below.</td></tr>
+        <tr><td>2</td><td><code>interaction.mouse.onPetalClick</code> &amp; friends</td><td>Replace or wrap the built-in behavior; call <code>defaultAction()</code> to run it.</td></tr>
+        <tr><td>3</td><td>The chart's built-in behavior</td><td>Selection, focus, slider seek, pan.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="data-events">Data events fire first</h2>
+    <p>The three <code>data*</code> events fire <strong>before</strong> the dataset changes, which is the
+      only point at which a veto can mean anything — a listener that reverted the chart afterwards would
+      still have paid for a rebuild and a visible frame. When a listener cancels, the call returns having
+      done nothing at all.</p>
+    <pre><code>chart.<span class="tok-fn">on</span>(<span class="tok-str">'dataAdd'</span>, (e) => e.<span class="tok-fn">preventDefault</span>());
+
+chart.<span class="tok-fn">add</span>({ x: <span class="tok-str">'F'</span>, y: <span class="tok-num">42</span> });
+chart.<span class="tok-fn">getData</span>().points.length; <span class="tok-com">// unchanged</span></code></pre>
+
+    <h2 id="layers">Drawing layers</h2>
+    <p>A layer is a callback invoked once per frame with a 2D context and the projections needed to place
+      things in the chart's own coordinates. Layers paint onto a dedicated canvas above the chart's axes
+      and legend, so they never contend with the chart's own repaint schedule.</p>
+    <table class="prop-table">
+      <thead><tr><th>Method</th><th>Returns</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>addLayer(draw, options?)</code></td><td class="type">ChartLayer</td>
+          <td>Register a per-frame paint callback. Options: <code>id</code>, <code>z</code> (paint order, low first), <code>visible</code>.</td></tr>
+        <tr><td><code>addElement(element)</code></td><td class="type">ChartLayer</td>
+          <td>Register one declarative annotation — see <a href="#elements">below</a>.</td></tr>
+        <tr><td><code>clearLayers()</code></td><td class="type">void</td>
+          <td>Remove every layer and element.</td></tr>
+        <tr><td><code>getLayerCount()</code></td><td class="type">number</td>
+          <td>How many layers are registered.</td></tr>
+      </tbody>
+    </table>
+    <p>The returned handle has <code>id</code>, mutable <code>z</code> and <code>visible</code>,
+      <code>setDraw(fn)</code> to swap the callback in place, and <code>remove()</code>. Adding a layer
+      with an <code>id</code> that is already taken replaces it rather than stacking a second one.</p>
+
+    <pre><code><span class="tok-key">const</span> layer = chart.<span class="tok-fn">addLayer</span>((c) => {
+  <span class="tok-com">// Mark the mean, in the chart's own data coordinates.</span>
+  <span class="tok-key">const</span> a = c.<span class="tok-fn">toDevice</span>(<span class="tok-num">0</span>, mean);
+  <span class="tok-key">const</span> b = c.<span class="tok-fn">toDevice</span>(<span class="tok-num">1</span>, mean);
+  c.ctx.strokeStyle = <span class="tok-str">'#ff3b6b'</span>;
+  c.ctx.lineWidth = <span class="tok-num">2</span> * c.dpr;
+  c.ctx.<span class="tok-fn">beginPath</span>();
+  c.ctx.<span class="tok-fn">moveTo</span>(a.x, a.y);
+  c.ctx.<span class="tok-fn">lineTo</span>(b.x, b.y);
+  c.ctx.<span class="tok-fn">stroke</span>();
+}, { id: <span class="tok-str">'mean'</span>, z: <span class="tok-num">10</span> });
+
+layer.visible = <span class="tok-key">false</span>;
+layer.<span class="tok-fn">remove</span>();</code></pre>
+
+    <p>The context passed to <code>draw</code>:</p>
+    <table class="prop-table">
+      <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>ctx</code></td><td class="type">CanvasRenderingContext2D</td><td>Already cleared, sized in device px.</td></tr>
+        <tr><td><code>deviceW</code> / <code>deviceH</code></td><td class="type">number</td><td>Canvas size in device px.</td></tr>
+        <tr><td><code>dpr</code></td><td class="type">number</td><td>Device pixel ratio — multiply CSS px by this.</td></tr>
+        <tr><td><code>plotRect</code></td><td class="type">[x0,y0,x1,y1]</td><td>The box the marks are laid out in, as canvas fractions (y-up).</td></tr>
+        <tr><td><code>view</code></td><td class="type">ViewTransform</td><td>Live pan/zoom, or identity on charts without it.</td></tr>
+        <tr><td><code>now</code></td><td class="type">number</td><td>Seconds since the current animation started.</td></tr>
+        <tr><td><code>toDevice(x, y, space?)</code></td><td class="type">{ x, y }</td><td>Project a point to device px, ready to draw.</td></tr>
+        <tr><td><code>toSpace(x, y, space?)</code></td><td class="type">{ x, y }</td><td>The inverse, for hit-testing your own marks.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="elements">Declarative elements</h2>
+    <p><code>addElement</code> covers the common annotations without writing canvas code. Every element
+      accepts <code>space</code>, <code>stroke</code>, <code>fill</code>, <code>lineWidth</code>,
+      <code>lineDash</code>, <code>opacity</code>, plus the layer options <code>id</code>,
+      <code>z</code> and <code>visible</code>. Widths and dashes are in <strong>CSS px</strong> and are
+      scaled for you.</p>
+    <table class="prop-table">
+      <thead><tr><th><code>kind</code></th><th>Geometry</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>'line'</code></td><td class="type">from, to</td><td>Two points.</td></tr>
+        <tr><td><code>'rect'</code></td><td class="type">at, width, height, radius?</td>
+          <td><code>at</code> is the lower-left corner in data/plot space. Both corners are projected, so it tracks a zoom correctly.</td></tr>
+        <tr><td><code>'circle'</code></td><td class="type">center, radius</td>
+          <td>The radius is in CSS px — a data-space radius would go elliptical under a non-uniform zoom.</td></tr>
+        <tr><td><code>'text'</code></td><td class="type">at, text, font?, align?, baseline?</td>
+          <td><code>font</code> is a CSS shorthand sized in CSS px.</td></tr>
+        <tr><td><code>'path'</code></td><td class="type">points, closed?</td><td>A polyline, optionally closed.</td></tr>
+      </tbody>
+    </table>
+
+    <pre><code><span class="tok-com">// A target band, plus the rule and label that go with it.</span>
+chart.<span class="tok-fn">addElement</span>({
+  kind: <span class="tok-str">'rect'</span>, at: [<span class="tok-num">0</span>, <span class="tok-num">0.6</span>], width: <span class="tok-num">1</span>, height: <span class="tok-num">0.15</span>,
+  fill: <span class="tok-str">'rgba(56,189,248,0.12)'</span>,
+});
+chart.<span class="tok-fn">addElement</span>({
+  kind: <span class="tok-str">'line'</span>, from: [<span class="tok-num">0</span>, <span class="tok-num">0.75</span>], to: [<span class="tok-num">1</span>, <span class="tok-num">0.75</span>],
+  stroke: <span class="tok-str">'#38bdf8'</span>, lineDash: [<span class="tok-num">4</span>, <span class="tok-num">4</span>],
+});
+chart.<span class="tok-fn">addElement</span>({
+  kind: <span class="tok-str">'text'</span>, space: <span class="tok-str">'plot'</span>, at: [<span class="tok-num">0.02</span>, <span class="tok-num">0.78</span>],
+  text: <span class="tok-str">'target'</span>, fill: <span class="tok-str">'#38bdf8'</span>, font: <span class="tok-str">'12px system-ui'</span>,
+});</code></pre>
+
+    <h2 id="spaces">Coordinate spaces</h2>
+    <p>Both <code>addLayer</code>'s projections and every element take a <code>space</code>, defaulting to
+      <code>'data'</code>:</p>
+    <table class="prop-table">
+      <thead><tr><th><code>space</code></th><th>Units</th><th>Use for</th></tr></thead>
+      <tbody>
+        <tr><td><code>'data'</code></td><td class="type">[0,1] per axis, y-up, follows pan/zoom</td>
+          <td>Anything pinned to the data. This is the space mark metadata is already in
+            (<code>BarMeta.x0</code>, slice angles, …), so an annotation on a mark belongs here.</td></tr>
+        <tr><td><code>'plot'</code></td><td class="type">[0,1] per axis, y-up, ignores pan/zoom</td>
+          <td>Things anchored to the frame — a corner badge, a legend of your own.</td></tr>
+        <tr><td><code>'canvas'</code></td><td class="type">CSS px from the top-left, y-down</td>
+          <td>DOM-style placement, when you already have a pixel offset.</td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      <strong>Radial charts.</strong> On the pie and wind rose, <code>'data'</code> and <code>'plot'</code>
+      are the <em>disc</em> box rather than a plot rect — the same space their slice and segment metas use,
+      so the two line up.
+    </div>
+
+    <h2 id="react">In React</h2>
+    <p>Every event above is a prop on the React components, and layers have a <code>layers</code> prop.
+      See <a href="react.html#events">React → Standard events</a>.</p>
+    <pre><code>&lt;BarChart
+  data={data}
+  layers={layers}
+  onClick={(e) => e.<span class="tok-fn">preventDefault</span>()}
+  onDataAdd={(e) => console.<span class="tok-fn">log</span>(e.action, e.items)}
+/&gt;</code></pre>
+
+    <div class="foot">
+      <p>© <span id="yr">2026</span> · <a href="license.html">License</a> ·
+        <a href="react.html">React bindings →</a></p>
+    </div>
+  </main>
+</div>
+<script>document.getElementById('yr').textContent=new Date().getFullYear();</script>
+</body>
+</html>

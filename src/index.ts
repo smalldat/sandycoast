@@ -2,6 +2,7 @@
 
 // Bar chart
 export { BarChart } from './charts/bar/BarChart.js';
+export type { BarChartEvents } from './charts/bar/BarChart.js';
 export { layoutBars } from './charts/bar/layout.js';
 export type {
   AxisConfig,
@@ -23,6 +24,7 @@ export type { ResolvedBarStyle } from './charts/bar/barStyle.js';
 
 // Pie / donut chart (one series at a time, picked by the series slider)
 export { PieChart } from './charts/pie/PieChart.js';
+export type { PieChartEvents } from './charts/pie/PieChart.js';
 export { hitSlice, layoutPie } from './charts/pie/layout.js';
 export type { PieLayout, PieLayoutOptions } from './charts/pie/layout.js';
 export { resolvePieStyle } from './charts/pie/pieStyle.js';
@@ -80,6 +82,7 @@ export { PLOT_HEIGHT } from './core/layout/plot.js';
 
 // Line chart (mirrors the bar chart's config surface; line style in place of border)
 export { LineChart } from './charts/line/LineChart.js';
+export type { LineChartEvents } from './charts/line/LineChart.js';
 export { layoutLine } from './charts/line/layout.js';
 export type { LineLayout, SeriesPath } from './charts/line/layout.js';
 export type {
@@ -93,6 +96,7 @@ export type { ResolvedLineStyle } from './charts/line/lineStyle.js';
 
 // Scatter chart (continuous x/y, explicit series array; marker in place of line/border)
 export { ScatterChart } from './charts/scatter/ScatterChart.js';
+export type { ScatterChartEvents } from './charts/scatter/ScatterChart.js';
 export { layoutScatter } from './charts/scatter/layout.js';
 export type { ScatterLayout } from './charts/scatter/layout.js';
 export {
@@ -116,6 +120,7 @@ export type {
 
 // Wind rose (two indicators over one time dimension; petals aggregate readings)
 export { WindRoseChart } from './charts/windrose/WindRoseChart.js';
+export type { WindRoseChartEvents } from './charts/windrose/WindRoseChart.js';
 export { hitSegment, layoutWindRose } from './charts/windrose/layout.js';
 export type { WindRoseLayout, WindRoseLayoutOptions } from './charts/windrose/layout.js';
 export {
@@ -187,6 +192,40 @@ export type {
 export { runMouseHook } from './core/interaction/mouse.js';
 export type { MouseHook, MouseHookContext, MouseHookResult } from './core/interaction/mouse.js';
 
+// Chart kernel — the cancellable events and drawing layers every chart inherits
+export { ChartKernel } from './core/chart/kernel.js';
+export type { ChartEvents, ChartFrameInfo } from './core/chart/kernel.js';
+export { ChartEventBus } from './core/chart/events.js';
+export type {
+  ChartClickPayload,
+  ChartCoreEvents,
+  ChartDataPayload,
+  ChartDragPayload,
+  ChartDragTarget,
+  ChartDrawPayload,
+  ChartEvent,
+  ChartEventBase,
+  ChartPanPayload,
+  ChartPointerPx,
+  ChartZoomPayload,
+  EmitOptions,
+} from './core/chart/events.js';
+export { drawElement, LayerStack } from './core/chart/layers.js';
+export type {
+  ChartDrawContext,
+  ChartElement,
+  ChartLayer,
+  CircleElement,
+  ElementStyle,
+  LayerDraw,
+  LayerOptions,
+  LayerSpace,
+  LineElement,
+  PathElement,
+  RectElement,
+  TextElement,
+} from './core/chart/layers.js';
+
 // Shared polar layout helpers (disc-shaped visuals: pie/donut, wind rose)
 export {
   CENTER,
@@ -200,6 +239,7 @@ export {
 
 // Candlestick chart (OHLC + live price; rising/falling color rule, series slider)
 export { CandlestickChart } from './charts/candlestick/CandlestickChart.js';
+export type { CandlestickChartEvents } from './charts/candlestick/CandlestickChart.js';
 export { hitCandle, layoutCandles } from './charts/candlestick/layout.js';
 export type {
   CandleLayout,
@@ -337,6 +377,14 @@ export type {
 
 // Pan & zoom (shared abstraction across all visuals)
 export { PanZoomController } from './core/view/controller.js';
+export type {
+  DragHook,
+  DragIntent,
+  PanZoomHooks,
+  ViewCause,
+  ViewChangeHook,
+  ViewChangeIntent,
+} from './core/view/controller.js';
 export { ZoomControls } from './core/view/controls.js';
 export {
   IDENTITY_VIEW,

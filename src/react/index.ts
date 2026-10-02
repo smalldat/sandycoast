@@ -17,3 +17,14 @@ export type { WindRoseChartProps } from './WindRoseChart.js';
 
 export { CandlestickChart } from './CandlestickChart.js';
 export type { CandlestickChartProps } from './CandlestickChart.js';
+
+// The standard event props every chart component accepts, plus the `layers`
+// bridge — exported so callers can type their own wrappers.
+export { subscribeCoreEvents, useChartLayers } from './coreEvents.js';
+export type {
+  ChartCoreEventProps,
+  ChartDrawEventProps,
+  ChartEventProps,
+  CoreEventSource,
+  LayerHost,
+} from './coreEvents.js';

@@ -1,10 +1,22 @@
 import { type CSSProperties, forwardRef, useImperativeHandle, useRef } from 'react';
-import type { HoverPayload } from '../charts/bar/types.js';
+import type { BarMeta, HoverPayload } from '../charts/bar/types.js';
+import type {
+  BarChartConfig,
+  ChartElement,
+  DataSet,
+  Point,
+  PointPatch,
+  PointRef,
+  SeriesFocusPayload,
+} from '../index.js';
 import { BarChart as BarChartCore } from '../index.js';
-import type { BarChartConfig, DataSet, SeriesFocusPayload } from '../index.js';
+import { type ChartEventProps, subscribeCoreEvents, useChartLayers } from './coreEvents.js';
 import { useChart, useLatest } from './useChartLifecycle.js';
 
-export interface BarChartProps {
+/** Items this chart's data methods accept, as reported by the `data*` events. */
+type BarItem = Point | PointPatch | PointRef;
+
+export interface BarChartProps extends ChartEventProps<BarMeta, BarItem> {
   /**
    * Chart data; changes morph the existing bars in place. Compared by
    * reference, so build it outside render (or memoize it) — a fresh literal
@@ -17,6 +29,12 @@ export interface BarChartProps {
    * `useMemo`) so it doesn't change identity on every render.
    */
   options?: Omit<BarChartConfig, 'data'>;
+  /**
+   * Declarative annotations drawn on top of the chart (a threshold rule,
+   * a target band, a callout). Compared by reference, so memoize it.
+   * Layers added imperatively through the ref are left alone.
+   */
+  layers?: readonly ChartElement[];
   className?: string;
   style?: CSSProperties;
   onHover?: (payload: HoverPayload) => void;
@@ -31,11 +49,40 @@ const applyData = (instance: BarChartCore, data: DataSet): void => instance.upda
  * imperative calls (`focusSeries`, `getView`, `panBy`, …).
  */
 export const BarChart = forwardRef<BarChartCore, BarChartProps>(function BarChart(
-  { data, options, className, style, onHover, onSeriesFocus },
+  {
+    data,
+    options,
+    layers,
+    className,
+    style,
+    onHover,
+    onSeriesFocus,
+    onClick,
+    onDblClick,
+    onDrag,
+    onPan,
+    onZoom,
+    onDrawFinished,
+    onDataAdd,
+    onDataUpdate,
+    onDataRemove,
+  },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const handlers = useLatest({ onHover, onSeriesFocus });
+  const handlers = useLatest({
+    onHover,
+    onSeriesFocus,
+    onClick,
+    onDblClick,
+    onDrag,
+    onPan,
+    onZoom,
+    onDrawFinished,
+    onDataAdd,
+    onDataUpdate,
+    onDataRemove,
+  });
 
   const instance = useChart<BarChartCore, DataSet>({
     containerRef,
@@ -46,9 +93,12 @@ export const BarChart = forwardRef<BarChartCore, BarChartProps>(function BarChar
     subscribe: (chart) => [
       chart.on('hover', (p) => handlers.current.onHover?.(p)),
       chart.on('seriesFocus', (p) => handlers.current.onSeriesFocus?.(p)),
+      ...subscribeCoreEvents(chart, () => handlers.current),
     ],
     deps: [options],
   });
+
+  useChartLayers(instance, layers);
 
   useImperativeHandle(ref, () => instance as BarChartCore, [instance]);
 

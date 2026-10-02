@@ -1,10 +1,22 @@
 import { type CSSProperties, forwardRef, useImperativeHandle, useRef } from 'react';
-import type { HoverPayload } from '../charts/line/types.js';
+import type { HoverPayload, LineMeta } from '../charts/line/types.js';
+import type {
+  ChartElement,
+  DataSet,
+  LineChartConfig,
+  Point,
+  PointPatch,
+  PointRef,
+  SeriesFocusPayload,
+} from '../index.js';
 import { LineChart as LineChartCore } from '../index.js';
-import type { DataSet, LineChartConfig, SeriesFocusPayload } from '../index.js';
+import { type ChartEventProps, subscribeCoreEvents, useChartLayers } from './coreEvents.js';
 import { useChart, useLatest } from './useChartLifecycle.js';
 
-export interface LineChartProps {
+/** Items this chart's data methods accept, as reported by the `data*` events. */
+type LineItem = Point | PointPatch | PointRef;
+
+export interface LineChartProps extends ChartEventProps<LineMeta, LineItem> {
   /**
    * Chart data; changes morph the existing lines in place. Compared by
    * reference, so build it outside render (or memoize it) — a fresh literal
@@ -17,6 +29,12 @@ export interface LineChartProps {
    * `useMemo`) so it doesn't change identity on every render.
    */
   options?: Omit<LineChartConfig, 'data'>;
+  /**
+   * Declarative annotations drawn on top of the chart (a threshold rule,
+   * a target band, a callout). Compared by reference, so memoize it.
+   * Layers added imperatively through the ref are left alone.
+   */
+  layers?: readonly ChartElement[];
   className?: string;
   style?: CSSProperties;
   onHover?: (payload: HoverPayload) => void;
@@ -31,11 +49,40 @@ const applyData = (instance: LineChartCore, data: DataSet): void => instance.upd
  * imperative calls (`focusSeries`, `getView`, `panBy`, …).
  */
 export const LineChart = forwardRef<LineChartCore, LineChartProps>(function LineChart(
-  { data, options, className, style, onHover, onSeriesFocus },
+  {
+    data,
+    options,
+    layers,
+    className,
+    style,
+    onHover,
+    onSeriesFocus,
+    onClick,
+    onDblClick,
+    onDrag,
+    onPan,
+    onZoom,
+    onDrawFinished,
+    onDataAdd,
+    onDataUpdate,
+    onDataRemove,
+  },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const handlers = useLatest({ onHover, onSeriesFocus });
+  const handlers = useLatest({
+    onHover,
+    onSeriesFocus,
+    onClick,
+    onDblClick,
+    onDrag,
+    onPan,
+    onZoom,
+    onDrawFinished,
+    onDataAdd,
+    onDataUpdate,
+    onDataRemove,
+  });
 
   const instance = useChart<LineChartCore, DataSet>({
     containerRef,
@@ -46,9 +93,12 @@ export const LineChart = forwardRef<LineChartCore, LineChartProps>(function Line
     subscribe: (chart) => [
       chart.on('hover', (p) => handlers.current.onHover?.(p)),
       chart.on('seriesFocus', (p) => handlers.current.onSeriesFocus?.(p)),
+      ...subscribeCoreEvents(chart, () => handlers.current),
     ],
     deps: [options],
   });
+
+  useChartLayers(instance, layers);
 
   useImperativeHandle(ref, () => instance as LineChartCore, [instance]);
 

@@ -1,3 +1,5 @@
+import type { ChartEvents, ChartFrameInfo } from '../../core/chart/kernel.js';
+import { ChartKernel } from '../../core/chart/kernel.js';
 import {
   type Margins,
   type ResolvedChrome,
@@ -20,7 +22,6 @@ import { mulberry32 } from '../../core/particles/rng.js';
 import { pickRenderer } from '../../core/render/pick.js';
 import type { FrameUniforms, RGBA, Renderer } from '../../core/render/types.js';
 import { DEFAULT_PALETTE, parseColor } from '../../core/util/color.js';
-import { Emitter } from '../../core/util/emitter.js';
 import { type RoseAxes, buildRoseAxes } from './axis.js';
 import { bandRanges } from './binning.js';
 import { bearingLabel, degreesFromRadians } from './compass.js';
@@ -150,11 +151,21 @@ function resolve(cfg: WindRoseChartConfig): Resolved {
   };
 }
 
-type Events = {
+// A type alias, not an interface: only the former carries the implicit index
+// signature that `ChartKernel`'s `Record<string, object>` constraint needs.
+/** Events this chart adds on top of the standard set every chart inherits. */
+type RoseExtraEvents = {
   hover: HoverPayload;
   select: SelectPayload;
   highlight: HighlightPayload;
 };
+
+/** Everything {@link WindRoseChart.on} accepts: the standard events plus the above. */
+export type WindRoseChartEvents<Custom = unknown> = ChartEvents<
+  SegmentMeta,
+  WindPoint<Custom> | number,
+  RoseExtraEvents
+>;
 
 /** Column formatters for the time table — the chart's half of `table`. */
 interface ResolvedTableFormat {
@@ -244,7 +255,11 @@ function clamp01(v: number): number {
  * - a **time table** can stand beside (or instead of) the legend, with row
  *   click ↔ segment selection as one code path.
  */
-export class WindRoseChart<Custom = unknown> {
+export class WindRoseChart<Custom = unknown> extends ChartKernel<
+  SegmentMeta,
+  WindPoint<Custom> | number,
+  RoseExtraEvents
+> {
   private el: HTMLElement;
   private canvas: HTMLCanvasElement;
   private cfg: Resolved;
@@ -259,7 +274,6 @@ export class WindRoseChart<Custom = unknown> {
     intensityLabel: 'Speed',
     intensityUnit: '',
   };
-  private emitter = new Emitter<Events>();
 
   private revealMode: BuildMode = 'pour';
   private morph: MorphTween | null = null;
@@ -306,6 +320,7 @@ export class WindRoseChart<Custom = unknown> {
   private ready: Promise<void>;
 
   constructor(el: HTMLElement, config: WindRoseChartConfig<Custom>) {
+    super();
     this.el = el;
     // Seat data synchronously so getData() is valid before the async boot runs
     // buildGrains(); otherwise a rebuild firing mid-boot captures empty data.
@@ -326,7 +341,7 @@ export class WindRoseChart<Custom = unknown> {
 
     this.mountChrome();
     if (this.fpsCfg.show) {
-      this.ensureRelative();
+      this.ensureRelative(this.el);
       this.fps = new FpsMeter(this.el, this.fpsCfg.position, this.fpsCfg.color);
     }
 
@@ -334,12 +349,8 @@ export class WindRoseChart<Custom = unknown> {
   }
 
   /** Make the host a positioning context so overlays anchor to it. */
-  private ensureRelative(): void {
-    if (getComputedStyle(this.el).position === 'static') this.el.style.position = 'relative';
-  }
-
   private mountChrome(): void {
-    this.ensureRelative();
+    this.ensureRelative(this.el);
 
     const oc = document.createElement('canvas');
     oc.style.position = 'absolute';
@@ -375,8 +386,20 @@ export class WindRoseChart<Custom = unknown> {
     return this.renderer?.kind ?? null;
   }
 
-  on<K extends keyof Events>(event: K, fn: (p: Events[K]) => void): () => void {
-    return this.emitter.on(event, fn);
+  /**
+   * Geometry the shared drawing layers project through (see {@link ChartKernel}).
+   * The rect is the **rose disc**, not the plot box, so a layer's `'data'`
+   * coordinates line up with the segment metas.
+   */
+  protected chartFrame(): ChartFrameInfo {
+    return {
+      host: this.el,
+      canvas: this.canvas,
+      rect: this.roseRect,
+      dpr: this.dpr,
+      view: this.identityView,
+      now: this.nowSeconds(),
+    };
   }
 
   private async boot(
@@ -564,7 +587,7 @@ export class WindRoseChart<Custom = unknown> {
     this.legend?.setFocus(this.focusedIndex());
     this.table?.setSelected(this.selectedRowIndex());
     this.overlayDirty = true;
-    this.emitter.emit('select', {
+    this.emit('select', {
       segmentKey: this.selectedKey,
       observationId: this.selectedObservation,
       segment: this.metaForKey(this.selectedKey),
@@ -966,7 +989,7 @@ export class WindRoseChart<Custom = unknown> {
     }
     this.highlightWeights = weights;
     this.highlighted = metas;
-    this.emitter.emit('highlight', { observations: metas as ObservationMeta[] });
+    this.emit('highlight', { observations: metas as ObservationMeta[] }, { cancelable: false });
   }
 
   /** The readings the latest-value highlight currently resolves to. */
@@ -993,18 +1016,21 @@ export class WindRoseChart<Custom = unknown> {
   /** Replace the dataset and morph to it. */
   setData(data: WindDataSet<Custom>): void {
     if (this.disposed) return;
+    if (!this.allowsData('dataUpdate', 'replace', [])) return;
     this.buildGrains(data, 'morph');
   }
 
   /** Append readings — the streaming case; petals grow to take them. */
   add(points: WindPoint<Custom>[]): void {
     if (this.disposed || points.length === 0) return;
+    if (!this.allowsData('dataAdd', 'add', points)) return;
     this.buildGrains({ ...this.data, points: [...this.data.points, ...points] }, 'morph');
   }
 
   /** Drop readings by source index (negative counts from the end). */
   remove(indices: number[]): void {
     if (this.disposed || indices.length === 0) return;
+    if (!this.allowsData('dataRemove', 'remove', indices)) return;
     const drop = new Set(indices.map((i) => (i < 0 ? this.data.points.length + i : i)));
     const points = this.data.points.filter((_, i) => !drop.has(i));
     this.buildGrains({ ...this.data, points }, 'morph');
@@ -1046,6 +1072,8 @@ export class WindRoseChart<Custom = unknown> {
         this.drawOverlay(now);
       }
     }
+    // Caller-owned layers repaint last, on top of the finished frame.
+    this.afterDraw();
     this.raf = requestAnimationFrame(this.loop);
   };
 
@@ -1132,7 +1160,7 @@ export class WindRoseChart<Custom = unknown> {
     const id = hit?.segmentId ?? -1;
     if (id !== this.lastEmittedHover) {
       this.lastEmittedHover = id;
-      this.emitter.emit('hover', { segment: hit });
+      this.emit('hover', { segment: hit }, { native: e, cancelable: false });
     }
     if (this.overlay && this.chrome.currentValue.show) this.overlayDirty = true;
   };
@@ -1158,7 +1186,7 @@ export class WindRoseChart<Custom = unknown> {
     }
     if (this.lastEmittedHover !== -1) {
       this.lastEmittedHover = -1;
-      this.emitter.emit('hover', { segment: null });
+      this.emit('hover', { segment: null }, { cancelable: false });
     }
     if (this.overlay && this.chrome.currentValue.show) this.overlayDirty = true;
   };
@@ -1167,13 +1195,13 @@ export class WindRoseChart<Custom = unknown> {
     const hit = this.hitTest(this.devicePoint(e));
     const px = this.cssPoint(e);
     if (hit) {
-      runMouseHook(this.cfg.mouse.onPetalClick, hit, e, px, () => {
+      this.dispatchClick('click', hit, e, px, this.cfg.mouse.onPetalClick, () => {
         // Clicking the selected segment again clears it, so the rose is never
         // stuck in a selection the user cannot undo with the same gesture.
         this.setSelection(hit.key === this.selectedKey ? null : hit.key, null);
       });
     } else {
-      runMouseHook(this.cfg.mouse.onBackgroundClick, null, e, px, () => {
+      this.dispatchClick('click', null, e, px, this.cfg.mouse.onBackgroundClick, () => {
         this.setSelection(null, null);
       });
     }
@@ -1181,7 +1209,7 @@ export class WindRoseChart<Custom = unknown> {
 
   private onDoubleClick = (e: MouseEvent): void => {
     const hit = this.hitTest(this.devicePoint(e));
-    runMouseHook(this.cfg.mouse.onPetalDblClick, hit, e, this.cssPoint(e), () => {
+    this.dispatchClick('dblclick', hit, e, this.cssPoint(e), this.cfg.mouse.onPetalDblClick, () => {
       this.setSelection(null, null);
     });
   };
@@ -1199,7 +1227,7 @@ export class WindRoseChart<Custom = unknown> {
     return hitSegment(this.metas, lx, ly);
   }
 
-  dispose(): void {
+  override dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.canvas.removeEventListener('pointermove', this.onPointerMove);
@@ -1208,7 +1236,7 @@ export class WindRoseChart<Custom = unknown> {
     this.canvas.removeEventListener('dblclick', this.onDoubleClick);
     this.ro?.disconnect();
     this.renderer?.dispose();
-    this.emitter.clear();
+    super.dispose();
     this.legend?.dispose();
     this.table?.dispose();
     this.title?.dispose();

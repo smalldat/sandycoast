@@ -149,6 +149,7 @@ Static docs (no build step) are served from [GitHub Pages](https://smalldat.gith
 
 - [Overview + install/publish](https://smalldat.github.io/sandycoast/index.html)
 - [Data model & shared config](https://smalldat.github.io/sandycoast/data-model.html)
+- [Events & custom drawing](https://smalldat.github.io/sandycoast/events-and-layers.html) — cancellable `click`/`drag`/`pan`/`zoom`/`data*` events and the drawing-layer API every chart shares
 - [Bar chart](https://smalldat.github.io/sandycoast/bar-chart.html) — every config property, methods, events, examples
 - [Line chart](https://smalldat.github.io/sandycoast/line-chart.html)
 - [Scatter chart](https://smalldat.github.io/sandycoast/scatter-chart.html)
